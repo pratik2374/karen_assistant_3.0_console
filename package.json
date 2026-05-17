@@ -1,0 +1,35 @@
+{
+  "name": "karen_assistant",
+  "version": "1.0.0",
+  "description": "HEllo from Karen",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pratik2374/karen_assistant_3.0.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pratik2374/karen_assistant_3.0/issues"
+  },
+  "homepage": "https://github.com/pratik2374/karen_assistant_3.0#readme",
+  "dependencies": {
+    "@types/uuid": "^10.0.0",
+    "uuid": "^14.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.8.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.9",
+    "typescript": "^6.0.3"
+  }
+}

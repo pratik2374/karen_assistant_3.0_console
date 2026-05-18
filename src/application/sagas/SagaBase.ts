@@ -8,6 +8,8 @@ export interface SagaSnapshot {
   correlationId: string;
   startedAt: Date;
   updatedAt: Date;
+  version: number;
+  traceId: string;
   payloadData: any;
 }
 
@@ -20,6 +22,7 @@ export abstract class SagaBase<TState extends string> {
   public correlationId: string;
   public causationId?: string;
   public traceId: string;
+  public version: number;
   
   public startedAt: Date;
   public updatedAt: Date;
@@ -44,6 +47,7 @@ export abstract class SagaBase<TState extends string> {
     this.aggregateId = aggregateId;
     this.correlationId = correlationId;
     this.traceId = traceId;
+    this.version = 0;
     
     this.startedAt = new Date();
     this.updatedAt = new Date();
@@ -77,6 +81,8 @@ export abstract class SagaBase<TState extends string> {
       correlationId: this.correlationId,
       startedAt: this.startedAt,
       updatedAt: this.updatedAt,
+      version: this.version,
+      traceId: this.traceId,
       payloadData: this.getSnapshotPayload()
     };
   }

@@ -61,4 +61,16 @@ export class SagaObservabilityHook {
   getSnapshot(sagaId: string): SagaObservabilitySnapshot | undefined {
     return this.snapshots.get(sagaId);
   }
+
+  onSagaStarted(sagaId: string, sagaType: string, traceId: string): void {
+    console.log(JSON.stringify({ type: 'SAGA_STARTED', sagaId, sagaType, traceId, timestamp: new Date().toISOString() }));
+  }
+
+  onSagaCompleted(sagaId: string, sagaType: string, traceId: string): void {
+    console.log(JSON.stringify({ type: 'SAGA_COMPLETED', sagaId, sagaType, traceId, timestamp: new Date().toISOString() }));
+  }
+
+  onSagaResumed(sagaId: string, sagaType: string, traceId: string): void {
+    console.log(JSON.stringify({ type: 'SAGA_RESUMED', sagaId, sagaType, traceId, timestamp: new Date().toISOString() }));
+  }
 }

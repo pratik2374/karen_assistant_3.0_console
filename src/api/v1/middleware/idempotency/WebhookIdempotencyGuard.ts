@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
+import { RuntimeEventBus } from '../../../../console/RuntimeEventBus.js';
+import { RuntimeStore } from '../../../../console/RuntimeStore.js';
 
 export class WebhookIdempotencyGuard {
   constructor(private redis: Redis) {}
@@ -26,18 +28,15 @@ export class WebhookIdempotencyGuard {
       const acquired = await this.redis.set(cacheKey, 'processed', 'EX', 172800, 'NX');
 
       if (!acquired) {
-        console.warn(JSON.stringify({
-          type: 'WEBHOOK_DUPLICATE_SUPPRESSED',
-          messageId,
-          traceId: req.traceId,
-          timestamp: new Date().toISOString()
-        }));
-        
-        // WhatsApp requires immediate 200 OK for duplicates to stop retries
+        RuntimeStore.recordWebhook(true);
+        RuntimeEventBus.log('WEBHOOK_DUPLICATE', 'TRANSPORT',
+          `Duplicate suppressed: ${messageId}`, req.traceId, { messageId });
+
         res.status(200).json({ status: 'duplicate_suppressed' });
         return;
       }
 
+      RuntimeStore.recordWebhook(false);
       next();
     } catch (error: any) {
       console.error(JSON.stringify({

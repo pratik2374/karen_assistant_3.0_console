@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { HttpErrorMapper } from '../../errors/HttpErrorMapper';
-import { InboundMessagePipeline } from '../../../application/conversation/InboundMessagePipeline';
+import { HttpErrorMapper } from '../../errors/HttpErrorMapper.js';
+import { InboundMessagePipeline } from '../../../application/conversation/InboundMessagePipeline.js';
+import { RuntimeEventBus } from '../../../console/RuntimeEventBus.js';
 
 const WEBHOOK_SECRET = process.env.WHATSAPP_WEBHOOK_SECRET ?? 'changeme';
 
@@ -57,23 +58,19 @@ export class WhatsAppWebhookController {
       const userId = contact?.wa_id || message.from;
       const messageText = message.text?.body;
 
-      console.log(JSON.stringify({
-        type: 'WEBHOOK_RECEIVED',
-        source: 'WHATSAPP',
-        messageId,
-        userId,
-        traceId: req.traceId,
-        timestamp: new Date().toISOString()
-      }));
+      RuntimeEventBus.log('WEBHOOK_RECEIVED', 'TRANSPORT',
+        `Inbound message from ${userId}: "${messageText?.substring(0, 40)}..."`,
+        req.traceId, { messageId, userId }
+      );
 
       // Immediately return 200 OK to WhatsApp to prevent retries and timeouts
       res.status(200).json({ status: 'received' });
 
       // Async Background Dispatch
       if (messageText && userId) {
-        // Fire and forget (in production, use a background worker queue like BullMQ here)
         this.pipeline.process(userId, messageText, messageId, req.traceId).catch(err => {
-          console.error(`[BACKGROUND_PIPELINE_ERROR] Trace: ${req.traceId} - ${err.message}`);
+          RuntimeEventBus.log('PIPELINE_ERROR', 'ERROR',
+            `Async pipeline failure: ${err.message}`, req.traceId);
         });
       }
 

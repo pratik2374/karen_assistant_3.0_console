@@ -1,9 +1,10 @@
-import { AIProposalRuntime } from '../ai/runtime/AIProposalRuntime';
-import { ConversationSessionRepository } from '../../domain/conversation/ConversationSession';
-import { MessageRenderer } from './MessageRenderer';
-import { WhatsAppAdapter, WhatsAppMessage } from '../../infrastructure/external/whatsapp/WhatsAppAdapter';
-import { ICommandExecutor } from '../executor/IExecutor';
-import { ProposalType } from '../commands/CommandStandard';
+import { AIProposalRuntime } from '../ai/runtime/AIProposalRuntime.js';
+import { ConversationSessionRepository } from '../../domain/conversation/ConversationSession.js';
+import { MessageRenderer } from './MessageRenderer.js';
+import { WhatsAppAdapter, WhatsAppMessage } from '../../infrastructure/external/whatsapp/WhatsAppAdapter.js';
+import { ICommandExecutor } from '../executor/IExecutor.js';
+import { ProposalType } from '../commands/CommandStandard.js';
+import { RuntimeEventBus } from '../../console/RuntimeEventBus.js';
 import { randomUUID } from 'crypto';
 
 export class InboundMessagePipeline {
@@ -46,6 +47,8 @@ export class InboundMessagePipeline {
       // Route Proposal
       switch (proposal.proposalType) {
         case ProposalType.CLARIFICATION_REQUEST:
+          RuntimeEventBus.log('CLARIFICATION_SENT', 'AI',
+            `Clarification sent to ${userId}: "${(proposal as any).clarificationPrompt.substring(0, 60)}"`, traceId);
           session.setClarification({
             originalQuery: queryToProcess,
             clarificationPrompt: (proposal as any).clarificationPrompt,

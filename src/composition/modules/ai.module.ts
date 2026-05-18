@@ -20,11 +20,7 @@ class InMemoryTokenBudgetPolicy implements AITokenBudgetPolicy {
 
 export function buildAIModule(config: RuntimeConfig): AIModule {
   const circuitBreaker = new CircuitBreaker({ failureThreshold: 5, resetTimeoutMs: 30000 });
-  const sanitizer = new DeterministicContextSanitizer();
-  const validator = new AIResponseValidator();
-  const budgetPolicy = new InMemoryTokenBudgetPolicy(config.OPENAI_DAILY_TOKEN_BUDGET);
-
-  const openAIAdapter = new OpenAIAdapter(sanitizer, validator, budgetPolicy);
+  const openAIAdapter = new OpenAIAdapter(config.OPENAI_API_KEY || 'dummy-key');
 
   console.log('[AI] OpenAI adapter and circuit breaker wired.');
   return { openAIAdapter, circuitBreaker };

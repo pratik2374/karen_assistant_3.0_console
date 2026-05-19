@@ -23,12 +23,11 @@ export class GoogleCalendarAdapter extends ToolExecutionGateway implements ICale
       const calendarId = this.config.GOOGLE_CALENDAR_ID;
 
       if (email && privateKey) {
-        const auth = new google.auth.JWT(
-          email,
-          undefined,
-          privateKey.replace(/\\n/g, '\n'),
-          ['https://www.googleapis.com/auth/calendar']
-        );
+        const auth = new google.auth.JWT({
+          email: email,
+          key: privateKey.replace(/\\n/g, '\n'),
+          scopes: ['https://www.googleapis.com/auth/calendar']
+        });
         this.calendarApi = google.calendar({ version: 'v3', auth });
         this.isConfigured = true;
         

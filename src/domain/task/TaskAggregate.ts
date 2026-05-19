@@ -20,7 +20,7 @@ export class TaskAggregate extends AggregateRoot {
     super(id);
   }
 
-  static create(id: string, priority: string, ctx: CommandContext): TaskAggregate {
+  static create(id: string, priority: string, title: string, expiresAt: Date, userId: string, ctx: CommandContext): TaskAggregate {
     TaskAggregate.enforceTemporalValidity(ctx);
 
     const aggregate = new TaskAggregate(id);
@@ -30,7 +30,7 @@ export class TaskAggregate extends AggregateRoot {
         id,
         'TaskAggregate',
         aggregate.version + 1,
-        { state: TaskState.CREATED, priority },
+        { state: TaskState.CREATED, priority, title, expiresAt, userId },
         ctx.traceId,
         ctx.correlationId
       )

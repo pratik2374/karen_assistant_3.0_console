@@ -72,7 +72,7 @@ async function bootConsole(): Promise<void> {
   spinner.start('Wiring application layer...');
   const ai = buildAIModule(config);
   const application = buildApplicationModule(persistence!);
-  const api = buildApiModule(application, messaging!, ai);
+  const api = buildApiModule(application, messaging!, ai, config, persistence!);
 
   // Startup validation
   const validator = new StartupValidator(config, persistence!.client, messaging!.redis);
@@ -87,8 +87,24 @@ async function bootConsole(): Promise<void> {
   // ── Outbox Dispatcher ────────────────────────────────────────────────────
   const outboxDispatcher = messaging!.startOutboxDispatcher(persistence!.outboxStore);
 
+  // ── Boot BullMQ Consumers & Timer Reconciliation ─────────────────────────
+  if (api.consumerRegistry) {
+    await api.consumerRegistry.start();
+  }
+
+  if (api.timerService) {
+    await api.timerService.reconcileOnBoot().catch(e => {
+      console.error('[HYBRID TIMER] Reconciliation failed:', e);
+    });
+  }
+
   // ── Graceful Shutdown ────────────────────────────────────────────────────
-  const graceful = new GracefulShutdown({ mongoClient: persistence!.client, redis: messaging!.redis, outboxDispatcher });
+  const graceful = new GracefulShutdown({
+    mongoClient: persistence!.client,
+    redis: messaging!.redis,
+    outboxDispatcher,
+    consumerRegistry: api.consumerRegistry
+  });
   graceful.register();
 
   // ── HTTP Server ───────────────────────────────────────────────────────────
@@ -104,15 +120,15 @@ async function bootConsole(): Promise<void> {
   console.log(chalk.gray(`  WhatsApp Phone ID: ${process.env.WHATSAPP_PHONE_NUMBER_ID ?? 'NOT SET'}`));
   console.log('');
 
-  RuntimeEventBus.log('RUNTIME_ONLINE', 'SYSTEM', `Karen runtime online on :${config.PORT}`);
-
   const hud = new RuntimeHUD();
   const stream = new EventStreamConsoleAdapter(hud);
-  const cli = new KarenCLI(hud);
+  const cli = new KarenCLI(hud, persistence!);
 
   stream.start();
   hud.start();
   cli.start();
+
+  RuntimeEventBus.log('RUNTIME_ONLINE', 'SYSTEM', `Karen runtime online on :${config.PORT}`);
 }
 
 bootConsole().catch(err => {

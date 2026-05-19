@@ -41,9 +41,28 @@ export class AIProposalRuntime {
     // 5. OpenAI Execution
     let rawResult: any;
     try {
+      const now = new Date();
+      const timeContext = {
+        type: 'SYSTEM_CLOCK',
+        currentUtcTime: now.toISOString(),
+        localTimeAsiaKolkata: now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
+      };
+
+      const contextBlocks = [
+        {
+          memoryId: 'system-clock-context',
+          content: `SYSTEM TIME CONTEXT:\n${JSON.stringify(timeContext, null, 2)}`,
+          tags: ['system', 'time', 'clock'],
+          createdAt: now,
+          tier: 'SYSTEM',
+          provenance: { sourceMemoryIds: [], isTruncated: false }
+        },
+        ...assembledContext.blocks
+      ];
+
       rawResult = await this.openAiAdapter.generateStructuredOutput({
         systemPrompt: prompt,
-        contextString: JSON.stringify(assembledContext.blocks),
+        contextString: JSON.stringify(contextBlocks),
         userQuery: query,
         schemaConfig,
         model,

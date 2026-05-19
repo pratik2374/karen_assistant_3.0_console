@@ -6,6 +6,7 @@ import { ICommandExecutor } from '../executor/IExecutor';
 import { EscalationCommand } from '../../domain/reminder/ReminderAggregate';
 import { ExecutionContext } from '../../composition/context/ExecutionContext';
 import { SagaObservabilityHook } from '../../infrastructure/observability/metrics/SagaObservabilityHook';
+import { RuntimeEventBus } from '../../console/RuntimeEventBus';
 
 export class SagaDispatcher {
   constructor(
@@ -25,21 +26,33 @@ export class SagaDispatcher {
       const existing = await this.sagaRepository.findById(sagaId);
       if (existing) return; // Idempotency check
 
+      const dueAt = event.payload.expiresAt ? new Date(event.payload.expiresAt) : null;
+      const offsetMs = dueAt ? Math.max(dueAt.getTime() - Date.now(), 0) : 60 * 60 * 1000;
+      const userId = event.payload.userId || context.userId || '917439707352';
+
       const saga = new ReminderEscalationSaga(
         sagaId,
-        event.aggregateId, // Assuming ReminderAggregate shares ID with Task for simplicity here
+        event.aggregateId,
         event.correlationId,
         event.traceId,
         {
           taskId: event.aggregateId,
           escalationCount: 0,
-          userTimezone: 'UTC' // In production, fetch from user profile
+          userTimezone: 'Asia/Kolkata',
+          userId,
+          taskTitle: event.payload.title || 'Reminder'
         }
       );
 
       this.sagaHook.onSagaStarted(sagaId, 'ReminderEscalationSaga', event.traceId);
       
-      await saga.onTaskCreated(this.timerService, isReplay);
+      RuntimeEventBus.log('SAGA_STARTED', 'SAGA',
+        `ReminderEscalationSaga started for task ${event.aggregateId} (due in ${Math.round(offsetMs / 1000)}s)`,
+        event.traceId,
+        { sagaId, taskId: event.aggregateId, userId, offsetMs }
+      );
+
+      await saga.onTaskCreated(this.timerService, isReplay, offsetMs);
       await this.sagaRepository.save(saga.createSnapshot(), 0);
     }
 

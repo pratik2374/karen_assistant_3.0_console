@@ -50,5 +50,8 @@ export class EventStreamConsoleAdapter {
     
     const line = `${chalk.gray(ts)} ${colorFn(`[${tag}]`)}${traceStr} ${event.message}`;
     console.log(line);
+
+    // Redraw the HUD immediately at the very bottom
+    this.hud.render();
   }
 }

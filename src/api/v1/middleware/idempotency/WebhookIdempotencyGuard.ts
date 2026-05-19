@@ -8,15 +8,34 @@ export class WebhookIdempotencyGuard {
 
   public middleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const payload = req.body;
+      (req as any).idempotencyInvocations = ((req as any).idempotencyInvocations || 0) + 1;
+      const invCount = (req as any).idempotencyInvocations;
+
+      const payload = Buffer.isBuffer(req.body)
+        ? JSON.parse(req.body.toString())
+        : req.body;
       
-      // WhatsApp structure: payload.entry[0].changes[0].value.messages[0].id
       const entry = payload?.entry?.[0];
       const change = entry?.changes?.[0];
-      const message = change?.value?.messages?.[0];
+      const messagesList = change?.value?.messages;
+      const statusesList = change?.value?.statuses;
       
+      const payloadType = messagesList ? 'messages' :
+                          statusesList ? 'statuses' : 'other';
+
+      const message = messagesList?.[0];
+      const statusObj = statusesList?.[0];
+      
+      RuntimeEventBus.log('IDEMPOTENCY_DIAGNOSTIC_START', 'TRANSPORT',
+        `Idempotency Guard | Invocation: ${invCount} | Payload type: ${payloadType} | Msg ID: ${message?.id || 'none'} | Status ID: ${statusObj?.id || 'none'}`,
+        req.traceId
+      );
+
       if (!message || !message.id) {
-        // Not a message payload (e.g. status update), skip idempotency
+        RuntimeEventBus.log('IDEMPOTENCY_SKIP', 'TRANSPORT',
+          'Idempotency skipped: no message object or message.id found',
+          req.traceId
+        );
         return next();
       }
 
@@ -24,10 +43,19 @@ export class WebhookIdempotencyGuard {
       const cacheKey = `wh:idempotency:${messageId}`;
 
       // SETNX: Set if Not Exists
-      // TTL 48 hours = 172800 seconds
       const acquired = await this.redis.set(cacheKey, 'processed', 'EX', 172800, 'NX');
 
+      RuntimeEventBus.log('IDEMPOTENCY_REDIS_RESULT', 'TRANSPORT',
+        `Idempotency Redis check | Key: ${cacheKey} | Acquired NX: ${!!acquired}`,
+        req.traceId
+      );
+
       if (!acquired) {
+        RuntimeEventBus.log('IDEMPOTENCY_SUPPRESSED', 'TRANSPORT',
+          `Idempotency suppressed: duplicate message detected for key: ${cacheKey}`,
+          req.traceId
+        );
+
         RuntimeStore.recordWebhook(true);
         RuntimeEventBus.log('WEBHOOK_DUPLICATE', 'TRANSPORT',
           `Duplicate suppressed: ${messageId}`, req.traceId, { messageId });
@@ -39,12 +67,11 @@ export class WebhookIdempotencyGuard {
       RuntimeStore.recordWebhook(false);
       next();
     } catch (error: any) {
-      console.error(JSON.stringify({
-        type: 'IDEMPOTENCY_GUARD_ERROR',
-        error: error.message,
-        traceId: req.traceId
-      }));
-      // On Redis failure, fail open to avoid dropping messages entirely
+      RuntimeEventBus.log('IDEMPOTENCY_GUARD_ERROR', 'ERROR',
+        `Idempotency Guard failed: ${error.message}`,
+        req.traceId,
+        { stack: error.stack }
+      );
       next();
     }
   }

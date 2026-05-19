@@ -2,15 +2,16 @@
   "name": "karen_assistant",
   "version": "1.0.0",
   "description": "HEllo from Karen",
+  "type": "module",
   "main": "index.js",
   "directories": {
     "test": "tests"
   },
   "scripts": {
-    "dev": "ts-node --esm -r dotenv/config src/composition/KarenBootstrap.ts",
+    "dev": "tsx --env-file=.env src/composition/KarenBootstrap.ts",
     "build": "tsc --build",
     "start": "node dist/src/composition/KarenBootstrap.js",
-    "console": "ts-node --esm -r dotenv/config src/console/RuntimeConsole.ts",
+    "console": "tsx --env-file=.env src/console/RuntimeConsole.ts",
     "test": "jest --testPathPattern=tests --passWithNoTests",
     "test:sim": "jest --testPathPattern=tests/simulation --passWithNoTests",
     "test:int": "jest --testPathPattern=tests/integration --passWithNoTests"
@@ -54,6 +55,7 @@
     "@types/node": "^25.8.0",
     "jest": "^30.4.2",
     "ts-jest": "^29.4.9",
+    "tsx": "^4.22.1",
     "typescript": "^6.0.3"
   }
 }

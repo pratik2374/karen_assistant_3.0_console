@@ -13,6 +13,8 @@ interface ReminderSagaData {
   taskId: string;
   escalationCount: number;
   userTimezone: string;
+  userId: string;
+  taskTitle: string;
 }
 
 export class ReminderEscalationSaga extends SagaBase<ReminderEscalationState> {
@@ -48,14 +50,15 @@ export class ReminderEscalationSaga extends SagaBase<ReminderEscalationState> {
 
   public async onTaskCreated(
     timerService: HybridTimerService,
-    isReplay: boolean
+    isReplay: boolean,
+    offsetMs?: number
   ): Promise<void> {
     if (this.currentState !== 'PENDING') return;
 
-    // Schedule the first reminder 1 hour from now
+    // Schedule the first reminder
     this.transition('WAITING_ACK_1');
     
-    await this.scheduleNextWakeup(timerService, 60 * 60 * 1000, isReplay);
+    await this.scheduleNextWakeup(timerService, offsetMs ?? 60 * 60 * 1000, isReplay);
   }
 
   public async onTimerWakeup(
@@ -63,16 +66,12 @@ export class ReminderEscalationSaga extends SagaBase<ReminderEscalationState> {
     commandExecutor: ICommandExecutor<EscalationCommand, void>,
     context: ExecutionContext
   ): Promise<void> {
-    // Determine the next escalation command
     this.data.escalationCount++;
 
-    if (this.data.escalationCount === 1) {
-      this.transition('WAITING_ACK_2');
-      await this.scheduleNextWakeup(timerService, 120 * 60 * 1000, context.executionMode === 'REPLAY'); // 2 hours
-    } else if (this.data.escalationCount >= 2) {
-      this.transition('ESCALATED');
-      this.markAsCompleted(); // Max escalation reached
-    }
+    // For a simple, standard reminder system: once the reminder triggers and executes,
+    // it is complete. We transition to 'COMPLETED' and mark it completed.
+    this.transition('COMPLETED');
+    this.markAsCompleted();
 
     // Emit the command to the Aggregate to actually mutate state and send the physical reminder
     if (context.executionMode !== 'REPLAY') {
@@ -94,7 +93,6 @@ export class ReminderEscalationSaga extends SagaBase<ReminderEscalationState> {
       } catch (err: any) {
         // If it fails (e.g. DND invariant rejection or token exhausted), compensate
         this.markAsFailed(err.message, 'RETRY' as any);
-        // We could reschedule here.
       }
     }
   }

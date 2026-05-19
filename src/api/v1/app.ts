@@ -21,11 +21,11 @@ export function createApp(
   app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') ?? '*' }));
   app.set('trust proxy', 1);
 
+  // Raw body for webhook signature verification (must be registered before global express.json)
+  app.use('/v1/webhooks', express.raw({ type: 'application/json', limit: '50kb' }));
+
   // Payload size limits — prevent abuse
   app.use(express.json({ limit: '100kb' }));
-
-  // Raw body for webhook signature verification
-  app.use('/v1/webhooks', express.raw({ type: 'application/json', limit: '50kb' }));
 
   // Global rate limit — last-resort abuse protection
   app.use(rateLimit({

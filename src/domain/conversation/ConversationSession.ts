@@ -5,7 +5,14 @@ export interface ClarificationState {
   expiresAt: Date;
 }
 
+export interface PendingGoalApproval {
+  goal: any; // Type-erased IAgentGoal to prevent circular imports
+  expiresAt: Date;
+}
+
 export class ConversationSession {
+  public pendingGoal: PendingGoalApproval | null = null;
+
   constructor(
     public readonly userId: string,
     public activeClarification: ClarificationState | null = null,
@@ -29,6 +36,26 @@ export class ConversationSession {
 
   public clearClarification(): void {
     this.activeClarification = null;
+    this.lastInteractionAt = new Date();
+  }
+
+  public isWaitingForGoalApproval(): boolean {
+    if (!this.pendingGoal) return false;
+    if (new Date() > this.pendingGoal.expiresAt) {
+      this.pendingGoal = null; // Expired
+      return false;
+    }
+    return true;
+  }
+
+  public setPendingGoal(goal: any): void {
+    const expiresAt = new Date(Date.now() + 5 * 60000); // 5 minutes expiration
+    this.pendingGoal = { goal, expiresAt };
+    this.lastInteractionAt = new Date();
+  }
+
+  public clearPendingGoal(): void {
+    this.pendingGoal = null;
     this.lastInteractionAt = new Date();
   }
 }

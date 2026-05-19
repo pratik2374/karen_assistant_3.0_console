@@ -11,4 +11,5 @@ export interface OpenAICompletionRequest {
 
 export interface IOpenAIAdapter {
   generateStructuredOutput(request: OpenAICompletionRequest): Promise<any>;
+  generateEmbedding(text: string): Promise<number[]>;
 }

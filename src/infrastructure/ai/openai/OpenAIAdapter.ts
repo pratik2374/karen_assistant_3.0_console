@@ -10,8 +10,26 @@ export class OpenAIAdapter implements IOpenAIAdapter {
 
   public async generateStructuredOutput(request: OpenAICompletionRequest): Promise<any> {
     try {
+      let activeModel = request.model;
+      activeModel = 'gpt-5.4';
+
+      console.log(`[OPENAI ADAPTER] Sending request with schema: ${request.schemaConfig?.name}`);
+      console.log(JSON.stringify({
+        type: 'OPENAI_PAYLOAD_SENT',
+        model: request.model || 'gpt-4o',
+        resolvedModel: activeModel,
+        temperature: request.temperature ?? 0.0,
+        schemaName: request.schemaConfig?.name,
+        schemaConfig: request.schemaConfig,
+        messages: [
+          { role: 'system', content: request.systemPrompt.systemPrompt.substring(0, 100) + '...' },
+          { role: 'user', content: `CONTEXT:\n${request.contextString.substring(0, 100)}...\n\nUSER INTENT:\n${request.userQuery}` }
+        ],
+        timestamp: new Date().toISOString()
+      }, null, 2));
+
       const response = await this.client.chat.completions.create({
-        model: request.model || 'gpt-4o', // Default to 4o for structured outputs
+        model: activeModel,
         temperature: request.temperature ?? 0.0, // Strictly deterministic by default
         response_format: {
           type: 'json_schema',
@@ -34,6 +52,18 @@ export class OpenAIAdapter implements IOpenAIAdapter {
         throw new Error('OpenAI Rate Limit Exceeded');
       }
       throw new Error(`OpenAI API Failure: ${error.message}`);
+    }
+  }
+
+  public async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      const response = await this.client.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text
+      });
+      return response.data[0].embedding;
+    } catch (error: any) {
+      throw new Error(`OpenAI Embedding Failure: ${error.message}`);
     }
   }
 }

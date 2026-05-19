@@ -6,6 +6,7 @@ export interface GracefulShutdownTargets {
   mongoClient: MongoClient;
   redis: Redis;
   outboxDispatcher: OutboxDispatcher;
+  consumerRegistry?: { stop: () => Promise<void> };
 }
 
 export class GracefulShutdown {
@@ -27,7 +28,13 @@ export class GracefulShutdown {
     console.log(`[SHUTDOWN] Received ${signal}. Starting graceful shutdown...`);
 
     try {
-      // 1. Stop accepting new outbox work first
+      // 1. Stop BullMQ consumers first
+      if (this.targets.consumerRegistry) {
+        await this.targets.consumerRegistry.stop().catch(() => {});
+        console.log('[SHUTDOWN] ✓ BullMQ consumers stopped');
+      }
+
+      // 2. Stop accepting new outbox work
       this.targets.outboxDispatcher.stop();
       console.log('[SHUTDOWN] ✓ Outbox dispatcher stopped');
 

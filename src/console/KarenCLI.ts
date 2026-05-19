@@ -11,7 +11,7 @@ import { RuntimeHUD } from './RuntimeHUD.js';
 export class KarenCLI {
   private rl: readline.Interface;
 
-  constructor(private hud: RuntimeHUD) {
+  constructor(private hud: RuntimeHUD, private persistence?: any) {
     this.rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
   }
 
@@ -36,6 +36,7 @@ export class KarenCLI {
   private printHelp(): void {
     console.log(chalk.bold('\n  Available Commands:'));
     console.log(chalk.gray('  status    ') + '— Runtime snapshot');
+    console.log(chalk.gray('  reminders ') + '— Active sorted reminder queue');
     console.log(chalk.gray('  queues    ') + '— BullMQ queue depths');
     console.log(chalk.gray('  ai        ') + '— AI metrics & cognition stats');
     console.log(chalk.gray('  metrics   ') + '— Transport & webhook metrics');
@@ -47,15 +48,18 @@ export class KarenCLI {
   private handleCommand(raw: string): void {
     const cmd = raw.split(' ')[0].toLowerCase();
     switch (cmd) {
-      case 'help':    this.printHelp(); break;
-      case 'status':  this.cmdStatus(); break;
-      case 'queues':  this.cmdQueues(); break;
-      case 'ai':      this.cmdAI(); break;
-      case 'metrics': this.cmdMetrics(); break;
-      case 'health':  this.cmdHealth(); break;
+      case 'help':      this.printHelp(); break;
+      case 'status':    this.cmdStatus(); break;
+      case 'reminders':
+      case 'reminder':
+      case 'queue':     this.cmdReminders(); break;
+      case 'queues':    this.cmdQueues(); break;
+      case 'ai':        this.cmdAI(); break;
+      case 'metrics':   this.cmdMetrics(); break;
+      case 'health':    this.cmdHealth(); break;
       case 'exit':
-      case 'quit':    this.rl.close(); break;
-      case '':        break;
+      case 'quit':      this.rl.close(); break;
+      case '':          break;
       default:
         console.log(chalk.red(`Unknown command: "${cmd}". Type 'help'.`));
     }
@@ -125,5 +129,85 @@ export class KarenCLI {
       [chalk.gray('OpenAI'), icon(inf.openai)],
     );
     console.log(chalk.bold('\n  Infrastructure Health\n') + t.toString());
+  }
+
+  private async cmdReminders(): Promise<void> {
+    if (!this.persistence || !this.persistence.db) {
+      console.log(chalk.yellow('\n[CLI] Persistence layer not loaded.'));
+      return;
+    }
+
+    try {
+      const db = this.persistence.db;
+      // 1. Get all pending timers
+      const timers = await db.collection('timers_active')
+        .find({ status: 'PENDING' })
+        .sort({ targetWakeTime: 1 })
+        .toArray();
+
+      if (timers.length === 0) {
+        console.log(chalk.green('\n  No active reminders in queue.'));
+        return;
+      }
+
+      // 2. Extract sagaIds
+      const sagaIds = timers.map((t: any) => t.sagaId).filter(Boolean);
+
+      // 3. Fetch saga states for additional metadata (like title and user)
+      const sagas = await db.collection('saga_states')
+        .find({ sagaId: { $in: sagaIds } })
+        .toArray();
+
+      const sagaMap = new Map(sagas.map((s: any) => [s.sagaId, s]));
+
+      // 4. Render Table
+      const t = new Table({
+        head: [
+          chalk.cyan('Wake Time (Local)'),
+          chalk.cyan('Relative'),
+          chalk.cyan('Task Title'),
+          chalk.cyan('State'),
+          chalk.cyan('Recipient'),
+          chalk.cyan('Task ID')
+        ],
+        style: { border: ['gray'] }
+      });
+
+      for (const timer of timers) {
+        const saga = sagaMap.get(timer.sagaId);
+        const title = saga?.payloadData?.taskTitle || 'Reminder';
+        const state = saga?.currentState || 'PENDING';
+        const user = saga?.payloadData?.userId || 'Unknown';
+        const taskId = saga?.payloadData?.taskId || 'N/A';
+
+        // Format wake time
+        const wakeDate = new Date(timer.targetWakeTime);
+        const localTimeStr = wakeDate.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+        // Calculate relative time
+        const diffMs = wakeDate.getTime() - Date.now();
+        let relativeStr = '';
+        if (diffMs < 0) {
+          relativeStr = chalk.red('OVERDUE');
+        } else {
+          const mins = Math.floor(diffMs / 60000);
+          const secs = Math.floor((diffMs % 60000) / 1000);
+          relativeStr = `in ${mins}m ${secs}s`;
+        }
+
+        t.push([
+          localTimeStr,
+          relativeStr,
+          title,
+          state,
+          user,
+          taskId.substring(0, 8)
+        ]);
+      }
+
+      console.log(chalk.bold('\n  Active Reminder Queue (Sorted by Execution Time)\n') + t.toString());
+    } catch (err: any) {
+      console.log(chalk.red(`\n[CLI] Error querying reminders: ${err.message}`));
+    }
   }
 }

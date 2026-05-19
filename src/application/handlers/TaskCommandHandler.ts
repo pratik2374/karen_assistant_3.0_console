@@ -14,6 +14,7 @@ export interface CreateTaskCommand {
   priority: string;
   dueAt: Date;
   timezone: string;
+  userId?: string;
 }
 
 export interface CreateTaskResult {
@@ -53,12 +54,19 @@ export class TaskCommandHandler
       );
 
       // 1. Create the aggregate — invariants enforced internally
-      const task = TaskAggregate.create(taskId, command.priority, {
-        traceId: context.traceId,
-        correlationId: context.correlationId,
-        expiresAt: command.dueAt,
-        timeContext
-      });
+      const task = TaskAggregate.create(
+        taskId,
+        command.priority,
+        command.title,
+        command.dueAt,
+        command.userId || context.userId,
+        {
+          traceId: context.traceId,
+          correlationId: context.correlationId,
+          expiresAt: command.dueAt,
+          timeContext
+        }
+      );
 
       // 2. Save with optimistic concurrency (version 0 = new entity)
       await this.taskRepository.saveWithVersion(task, 0);

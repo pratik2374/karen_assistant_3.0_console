@@ -44,7 +44,7 @@ export async function bootstrap(): Promise<void> {
 
   // 7. Build application layer and API layer
   const application = buildApplicationModule(persistence);
-  const api = buildApiModule(application, messaging, ai);
+  const api = buildApiModule(application, messaging, ai, config);
 
   api.app.listen(config.PORT, () => {
     console.log(`[BOOTSTRAP] Karen is READY on port ${config.PORT}`);

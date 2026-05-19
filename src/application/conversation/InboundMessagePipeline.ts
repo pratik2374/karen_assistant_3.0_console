@@ -160,21 +160,26 @@ export class InboundMessagePipeline {
           );
           break;
 
+        case ProposalType.TOOL_REQUEST:
         case ProposalType.COMMAND_PROPOSAL: {
+          const isTool = proposal.proposalType === ProposalType.TOOL_REQUEST;
+          const actionIntent = isTool ? (proposal as any).toolName : (proposal as any).actionIntent;
+          const rawPayload = isTool ? (proposal as any).toolArguments : (proposal as any).rawPayload;
+
           RuntimeEventBus.log('ORCHESTRATION_DISPATCH', 'COMMAND',
-            `Dispatching command: ${(proposal as any).actionIntent}`,
+            `Dispatching command/tool: ${actionIntent}`,
             traceId
           );
 
           let payloadObj: any = {};
-          if (typeof (proposal as any).rawPayload === 'string') {
+          if (typeof rawPayload === 'string') {
             try {
-              payloadObj = JSON.parse((proposal as any).rawPayload);
+              payloadObj = JSON.parse(rawPayload);
             } catch (e) {
               payloadObj = {};
             }
           } else {
-            payloadObj = (proposal as any).rawPayload || {};
+            payloadObj = rawPayload || {};
           }
 
           // Log payloadObj keys and values for transparency
@@ -186,7 +191,7 @@ export class InboundMessagePipeline {
           const commandId = randomUUID();
           const correlationId = randomUUID();
 
-          const intentAction = ((proposal as any).actionIntent || '').toLowerCase();
+          const intentAction = (actionIntent || '').toLowerCase();
           const isCompleteOrCancel = [
             'complete_task',
             'cancel_reminder',
@@ -329,7 +334,7 @@ export class InboundMessagePipeline {
             this.renderer.renderConfirmation({
               commandId,
               commandDeduplicationKey: messageId,
-              actionType: (proposal as any).actionIntent,
+              actionType: actionIntent,
               payload: payloadObj,
               validatedAt: new Date(),
               traceId,

@@ -23,7 +23,7 @@ export class CalendarTool extends ToolExecutionGateway {
 
   constructor(
     circuitBreaker: CircuitBreaker,
-    private composio: ComposioClient,
+    public readonly composio: ComposioClient,
     private projectionRepo: CalendarProjectionMongoRepository
   ) {
     super(circuitBreaker);
@@ -35,7 +35,7 @@ export class CalendarTool extends ToolExecutionGateway {
     input: ToolInput & { timeMin: Date; timeMax: Date }
   ): Promise<ToolResult<ComposioCalendarEvent[]>> {
     const start = Date.now();
-    RuntimeEventBus.log('TOOL_CALLED', 'TOOL',
+    RuntimeEventBus.log('TOOL_CALLED', 'SYSTEM',
       `CalendarTool.listEvents [${input.timeMin.toISOString()} → ${input.timeMax.toISOString()}]`,
       input.traceId
     );
@@ -51,14 +51,14 @@ export class CalendarTool extends ToolExecutionGateway {
       },
       async () => {
         const events = await this.composio.listEvents(input.timeMin, input.timeMax, input.traceId);
-        RuntimeEventBus.log('TOOL_RESULT', 'TOOL',
+        RuntimeEventBus.log('TOOL_RESULT', 'SYSTEM',
           `CalendarTool.listEvents → ${events.length} events (${Date.now() - start}ms)`,
           input.traceId
         );
         return { success: true, data: events, latencyMs: Date.now() - start };
       },
       async () => {
-        RuntimeEventBus.log('TOOL_RESULT', 'TOOL', `CalendarTool.listEvents [SANDBOX/REPLAY] → []`, input.traceId);
+        RuntimeEventBus.log('TOOL_RESULT', 'SYSTEM', `CalendarTool.listEvents [SANDBOX/REPLAY] → []`, input.traceId);
         return { success: true, data: [], latencyMs: 0 };
       }
     );
@@ -70,7 +70,7 @@ export class CalendarTool extends ToolExecutionGateway {
     input: ToolInput & { event: CalendarEventInput }
   ): Promise<ToolResult<ComposioCalendarEvent>> {
     const start = Date.now();
-    RuntimeEventBus.log('TOOL_CALLED', 'TOOL',
+    RuntimeEventBus.log('TOOL_CALLED', 'SYSTEM',
       `CalendarTool.createEvent "${input.event.summary}"`,
       input.traceId
     );
@@ -92,7 +92,7 @@ export class CalendarTool extends ToolExecutionGateway {
           await this.upsertShadowProjection(event, input.userId, input.traceId);
         }
 
-        RuntimeEventBus.log('TOOL_RESULT', 'TOOL',
+        RuntimeEventBus.log('TOOL_RESULT', 'SYSTEM',
           `CalendarTool.createEvent → eventId: ${event.id} (${Date.now() - start}ms)`,
           input.traceId
         );
@@ -105,8 +105,14 @@ export class CalendarTool extends ToolExecutionGateway {
         };
       },
       async () => {
-        RuntimeEventBus.log('TOOL_RESULT', 'TOOL', `CalendarTool.createEvent [SANDBOX] → mocked`, input.traceId);
-        return { success: true, data: { id: 'sandbox-event-id', summary: input.event.summary }, latencyMs: 0 };
+        RuntimeEventBus.log('TOOL_RESULT', 'SYSTEM', `CalendarTool.createEvent [SANDBOX] → mocked`, input.traceId);
+        return { 
+          success: true, 
+          data: { id: 'sandbox-event-id', summary: input.event.summary }, 
+          externalEventId: 'sandbox-event-id',
+          etag: undefined,
+          latencyMs: 0 
+        };
       }
     );
   }
@@ -117,7 +123,7 @@ export class CalendarTool extends ToolExecutionGateway {
     input: ToolInput & { eventId: string; event: Partial<CalendarEventInput> }
   ): Promise<ToolResult<ComposioCalendarEvent>> {
     const start = Date.now();
-    RuntimeEventBus.log('TOOL_CALLED', 'TOOL',
+    RuntimeEventBus.log('TOOL_CALLED', 'SYSTEM',
       `CalendarTool.updateEvent eventId="${input.eventId}"`,
       input.traceId
     );
@@ -138,14 +144,14 @@ export class CalendarTool extends ToolExecutionGateway {
           await this.upsertShadowProjection(event, input.userId, input.traceId);
         }
 
-        RuntimeEventBus.log('TOOL_RESULT', 'TOOL',
+        RuntimeEventBus.log('TOOL_RESULT', 'SYSTEM',
           `CalendarTool.updateEvent → eventId: ${input.eventId} (${Date.now() - start}ms)`,
           input.traceId
         );
         return { success: true, data: event, externalEventId: event.id, latencyMs: Date.now() - start };
       },
       async () => {
-        return { success: true, data: { id: input.eventId }, latencyMs: 0 };
+        return { success: true, data: { id: input.eventId }, externalEventId: input.eventId, latencyMs: 0 };
       }
     );
   }
@@ -156,7 +162,7 @@ export class CalendarTool extends ToolExecutionGateway {
     input: ToolInput & { eventId: string }
   ): Promise<ToolResult<void>> {
     const start = Date.now();
-    RuntimeEventBus.log('TOOL_CALLED', 'TOOL',
+    RuntimeEventBus.log('TOOL_CALLED', 'SYSTEM',
       `CalendarTool.deleteEvent eventId="${input.eventId}"`,
       input.traceId
     );
@@ -180,7 +186,7 @@ export class CalendarTool extends ToolExecutionGateway {
           await this.projectionRepo.save(existing);
         }
 
-        RuntimeEventBus.log('TOOL_RESULT', 'TOOL',
+        RuntimeEventBus.log('TOOL_RESULT', 'SYSTEM',
           `CalendarTool.deleteEvent → done (${Date.now() - start}ms)`,
           input.traceId
         );
@@ -198,7 +204,7 @@ export class CalendarTool extends ToolExecutionGateway {
     input: ToolInput & { query: string; timeMin: Date; timeMax: Date }
   ): Promise<ToolResult<ComposioCalendarEvent[]>> {
     const start = Date.now();
-    RuntimeEventBus.log('TOOL_CALLED', 'TOOL',
+    RuntimeEventBus.log('TOOL_CALLED', 'SYSTEM',
       `CalendarTool.findEvents query="${input.query}"`,
       input.traceId
     );
@@ -214,7 +220,7 @@ export class CalendarTool extends ToolExecutionGateway {
       },
       async () => {
         const events = await this.composio.findEvents(input.query, input.timeMin, input.timeMax, input.traceId);
-        RuntimeEventBus.log('TOOL_RESULT', 'TOOL',
+        RuntimeEventBus.log('TOOL_RESULT', 'SYSTEM',
           `CalendarTool.findEvents → ${events.length} results (${Date.now() - start}ms)`,
           input.traceId
         );

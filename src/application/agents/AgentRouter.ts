@@ -1,24 +1,19 @@
-import { IAgent, AgentContext, AgentExecutionResult } from '../base/IAgent.js';
-import { CalendarAgent } from '../calendar/CalendarAgent.js';
+import { IAgent, AgentContext, AgentExecutionResult } from '../../agents/base/IAgent.js';
+import { CalendarAgent } from '../../agents/calendar/CalendarAgent.js';
+import { SystemOpsAgent } from '../../agents/system/SystemOpsAgent.js';
 import { RuntimeEventBus } from '../../console/RuntimeEventBus.js';
+import { OpenAI, OpenAIAgent } from '@llamaindex/openai';
+import { FunctionTool } from 'llamaindex';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AgentRouter — Deterministic intent-to-agent dispatcher.
+// AgentRouter — LLM-Powered Supervisor Dispatcher.
 //
 // GOVERNANCE RULES:
-//  - Routing is DETERMINISTIC (no LLM involved in routing decisions).
-//  - One intent maps to exactly one agent.
-//  - Unknown intents return an unrouted status (fallback to Karen's pipeline).
-//  - All agent executions are observable via RuntimeEventBus.
-//
-// Routing Table:
-//  list_tasks, query_calendar          → CalendarAgent
-//  create_calendar_event               → CalendarAgent
-//  update_calendar_event               → CalendarAgent
-//  delete_calendar_event               → CalendarAgent
-//  find_calendar_event                 → CalendarAgent
-//  (future) send_message               → MessagingAgent
-//  (future) organize_task              → TaskAgent
+//  - Routing is dynamically evaluated by an LLM (LlamaIndex).
+//  - The LLM will choose which sub-agent tool to invoke based on intent and payload.
+//  - Sub-agents are exposed as tools to the router.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type RouterResult =
@@ -26,42 +21,104 @@ export type RouterResult =
   | { routed: false; reason: string };
 
 export class AgentRouter {
-  private routingTable: Map<string, IAgent>;
-
-  constructor(private calendarAgent: CalendarAgent) {
-    this.routingTable = new Map([
-      ['list_tasks', calendarAgent],
-      ['query_calendar', calendarAgent],
-      ['create_calendar_event', calendarAgent],
-      ['update_calendar_event', calendarAgent],
-      ['delete_calendar_event', calendarAgent],
-      ['find_calendar_event', calendarAgent],
-    ]);
-  }
+  constructor(
+    private calendarAgent: CalendarAgent,
+    private systemOpsAgent: SystemOpsAgent
+  ) {}
 
   public canRoute(intent: string): boolean {
-    return this.routingTable.has(intent.toLowerCase());
+    // LLM Router will attempt to route EVERYTHING!
+    return true;
   }
 
   public async route(intent: string, context: AgentContext): Promise<RouterResult> {
     const normalizedIntent = intent.toLowerCase();
-    const agent = this.routingTable.get(normalizedIntent);
-
-    if (!agent) {
-      RuntimeEventBus.log('AGENT_ROUTER', 'SYSTEM',
-        `No agent registered for intent: ${intent}. Falling through to Karen pipeline.`,
-        context.traceId
-      );
-      return { routed: false, reason: `No agent handles intent: ${intent}` };
-    }
-
+    
     RuntimeEventBus.log('AGENT_ROUTER', 'SYSTEM',
-      `Routing intent "${intent}" → ${agent.name}`,
+      `LLM Router evaluating intent: "${normalizedIntent}"`,
       context.traceId
     );
 
-    const result = await agent.execute({ ...context, intent: normalizedIntent });
+    let subAgentResult: AgentExecutionResult | null = null;
+    let routedTo: string | null = null;
 
-    return { routed: true, result };
+    const calendarTool = FunctionTool.from(
+      async () => {
+        RuntimeEventBus.log('AGENT_ROUTER', 'SYSTEM', `LLM Chose CalendarAgent`, context.traceId);
+        routedTo = 'CalendarAgent';
+        subAgentResult = await this.calendarAgent.execute({ ...context, intent: normalizedIntent });
+        return `Successfully routed to CalendarAgent. Summary: ${subAgentResult.summaryReport}`;
+      },
+      {
+        name: 'route_to_calendar',
+        description: 'Route the request to the CalendarAgent. Use this for ANY calendar, scheduling, or event related tasks.',
+        parameters: { type: 'object', properties: {} }
+      }
+    );
+
+    const systemOpsTool = FunctionTool.from(
+      async () => {
+        RuntimeEventBus.log('AGENT_ROUTER', 'SYSTEM', `LLM Chose SystemOpsAgent`, context.traceId);
+        routedTo = 'SystemOpsAgent';
+        subAgentResult = await this.systemOpsAgent.execute({ ...context, intent: normalizedIntent });
+        return `Successfully routed to SystemOpsAgent. Summary: ${subAgentResult.summaryReport}`;
+      },
+      {
+        name: 'route_to_system_ops',
+        description: 'Route the request to the SystemOpsAgent. Use this for ANY reminders, tasks, timers, sagas, or internal system queries.',
+        parameters: { type: 'object', properties: {} }
+      }
+    );
+
+    try {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error('OPENAI_API_KEY is missing from environment variables');
+      }
+
+      const llm = new OpenAI({
+        apiKey,
+        model: 'gpt-5.4-mini', 
+        temperature: 0,
+      });
+
+      const agent = new OpenAIAgent({
+        tools: [calendarTool, systemOpsTool],
+        llm,
+        verbose: true,
+      });
+
+      const query = `
+You are the Master Supervisor Router for Karen.
+Your ONLY job is to select the correct sub-agent tool to fulfill the user's intent.
+
+Intent: ${normalizedIntent}
+Payload: ${JSON.stringify(context.payload)}
+
+If the intent involves standard reminders, tasks, timers, or system state, call route_to_system_ops.
+If the intent involves calendar events or scheduling external meetings, call route_to_calendar.
+
+Call the appropriate tool now. DO NOT generate an answer without calling a tool.
+      `;
+
+      await agent.chat({ message: query });
+
+      if (subAgentResult && routedTo) {
+        return { routed: true, result: subAgentResult };
+      }
+
+      RuntimeEventBus.log('AGENT_ROUTER', 'SYSTEM',
+        `LLM Router failed to pick an agent tool for intent: ${normalizedIntent}`,
+        context.traceId
+      );
+      
+      return { routed: false, reason: `LLM Router declined to route intent: ${normalizedIntent}` };
+    } catch (err: any) {
+      RuntimeEventBus.log('AGENT_ROUTER', 'ERROR',
+        `LLM Router crashed: ${err.message}`,
+        context.traceId
+      );
+      return { routed: false, reason: `LLM Router Error: ${err.message}` };
+    }
   }
 }

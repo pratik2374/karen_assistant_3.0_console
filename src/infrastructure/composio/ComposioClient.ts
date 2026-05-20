@@ -70,21 +70,22 @@ export class ComposioClient {
   ): Promise<ComposioCalendarEvent[]> {
     try {
       const session = await this.composio.create(this.userId);
-      const result = await session.execute('GOOGLECALENDAR_LIST_EVENTS', {
+      const result = await session.execute('GOOGLECALENDAR_EVENTS_LIST', {
         time_min: timeMin.toISOString(),
         time_max: timeMax.toISOString(),
         calendar_id: 'primary',
+        single_events: true,
       });
 
       RuntimeEventBus.log('COMPOSIO_REQUEST', 'TRANSPORT',
-        `GOOGLECALENDAR_LIST_EVENTS → ${result?.data?.items?.length ?? 0} events`,
+        `GOOGLECALENDAR_EVENTS_LIST → ${result?.data?.items?.length ?? 0} events`,
         traceId
       );
 
       return result?.data?.items || [];
     } catch (err: any) {
       RuntimeEventBus.log('COMPOSIO_ERROR', 'ERROR',
-        `GOOGLECALENDAR_LIST_EVENTS failed: ${err.message}`, traceId);
+        `GOOGLECALENDAR_EVENTS_LIST failed: ${err.message}`, traceId);
       throw err;
     }
   }
@@ -98,8 +99,9 @@ export class ComposioClient {
       const result = await session.execute('GOOGLECALENDAR_CREATE_EVENT', {
         summary: input.summary,
         description: input.description,
-        start: { dateTime: input.startDateTime, timeZone: input.timezone || 'Asia/Kolkata' },
-        end: { dateTime: input.endDateTime, timeZone: input.timezone || 'Asia/Kolkata' },
+        start_datetime: input.startDateTime,
+        end_datetime: input.endDateTime,
+        timezone: input.timezone || 'Asia/Kolkata',
         location: input.location,
         calendar_id: input.calendarId || 'primary',
       });
@@ -122,22 +124,24 @@ export class ComposioClient {
   ): Promise<ComposioCalendarEvent> {
     try {
       const session = await this.composio.create(this.userId);
-      const result = await session.execute('GOOGLECALENDAR_UPDATE_GOOGLE_EVENT', {
+      const result = await session.execute('GOOGLECALENDAR_UPDATE_EVENT', {
         event_id: eventId,
         calendar_id: input.calendarId || 'primary',
         summary: input.summary,
         description: input.description,
-        start: input.startDateTime ? { dateTime: input.startDateTime, timeZone: input.timezone || 'Asia/Kolkata' } : undefined,
-        end: input.endDateTime ? { dateTime: input.endDateTime, timeZone: input.timezone || 'Asia/Kolkata' } : undefined,
+        start_datetime: input.startDateTime,
+        end_datetime: input.endDateTime,
+        timezone: input.timezone,
+        location: input.location,
       });
 
       RuntimeEventBus.log('COMPOSIO_REQUEST', 'TRANSPORT',
-        `GOOGLECALENDAR_UPDATE_GOOGLE_EVENT → eventId: ${eventId}`, traceId);
+        `GOOGLECALENDAR_UPDATE_EVENT → eventId: ${eventId}`, traceId);
 
       return result?.data || {};
     } catch (err: any) {
       RuntimeEventBus.log('COMPOSIO_ERROR', 'ERROR',
-        `GOOGLECALENDAR_UPDATE_GOOGLE_EVENT failed: ${err.message}`, traceId);
+        `GOOGLECALENDAR_UPDATE_EVENT failed: ${err.message}`, traceId);
       throw err;
     }
   }

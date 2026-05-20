@@ -36,7 +36,7 @@ export class AIProposalRuntime {
     const schemaConfig = this.schemaRegistry.getOpenAiSchema('AIProposal_v1');
 
     // 4. Model Routing
-    const model = mode === 'FAST' ? 'gpt-4o-mini' : 'gpt-4o';
+    const model = mode === 'FAST' ? 'gpt-5.4-mini' : 'gpt-5.4';
 
     // 5. OpenAI Execution
     let rawResult: any;

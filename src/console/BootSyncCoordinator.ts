@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import { CalendarSyncState } from '../domain/calendar/CalendarEventProjection.js';
 import { TaskMongoRepository } from '../infrastructure/persistence/mongo/repositories/TaskMongoRepository.js';
 import { TaskAggregate } from '../domain/task/TaskAggregate.js';
+import { TimeContext } from '../domain/shared/value-objects/TimeContext.js';
 import { randomUUID } from 'crypto';
 import { RuntimeEventBus } from './RuntimeEventBus.js';
 
@@ -29,7 +30,7 @@ export class BootSyncCoordinator {
 
       // 1. [DB pulles tasks]
       const toolResult = await this.calendarTool.listEvents({
-        userId: 'system_boot',
+        userId: 'karen',
         payload: {},
         traceId: randomUUID(),
         correlationId: randomUUID(),
@@ -67,13 +68,26 @@ export class BootSyncCoordinator {
           });
 
           // Create local TaskAggregate so the Timer system can track it
+          const expiresAt = new Date(evt.start?.dateTime || evt.start?.date);
+          const timeCtx = new TimeContext(
+            'Asia/Kolkata',
+            330,
+            new Date(expiresAt.getTime() - 60000),
+            new Date(expiresAt.getTime() - 60000),
+            false
+          );
           const task = TaskAggregate.create(
             internalId,
             'system_sync',
             evt.summary || 'Untitled Event',
-            new Date(evt.start?.dateTime || evt.start?.date),
+            expiresAt,
             'system_sync',
-            'system_sync'
+            {
+              traceId: randomUUID(),
+              correlationId: randomUUID(),
+              expiresAt,
+              timeContext: timeCtx
+            }
           );
           await this.taskRepo.save(task);
 

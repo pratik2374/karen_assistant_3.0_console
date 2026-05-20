@@ -2,3 +2,5 @@ node_modules/
 .env
 karen-439305-ff00a7839518.json
 test_calnedr.ts
+dist/
+scratch/

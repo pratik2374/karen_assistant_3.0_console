@@ -194,191 +194,38 @@ export class InboundMessagePipeline {
           const correlationId = randomUUID();
 
           const intentAction = (actionIntent || '').toLowerCase();
-          const isCompleteOrCancel = [
-            'complete_task',
-            'cancel_reminder',
-            'remove_reminder',
-            'remove_schedule',
-            'cancel_schedule',
-            'complete_schedule'
-          ].includes(intentAction);
-          const isListTasks = intentAction === 'list_tasks' || intentAction === 'query_tasks';
 
-          if (isCompleteOrCancel && this.persistence) {
-            const taskId = payloadObj.taskId || payloadObj.id;
-            if (!taskId) {
-              throw new Error('Task ID / Reminder ID is required to cancel or complete.');
-            }
-
-            // Execute cancellation/acknowledgment inside Unit of Work!
-            const uow = this.persistence.buildUnitOfWork();
-            await uow.start();
-
+          if (this.agentRouter && this.agentRouter.canRoute(intentAction)) {
             try {
-              const reminderId = `reminder-${taskId}`;
-              let reminder = await this.persistence.reminderRepository.findById(reminderId);
-              
-              let expectedVersion = 0;
-              if (!reminder) {
-                reminder = ReminderAggregate.initialize(reminderId, taskId, traceId, correlationId);
-              } else {
-                expectedVersion = reminder.version;
-              }
-
-              reminder.acknowledge(traceId, correlationId);
-              await this.persistence.reminderRepository.saveWithVersion(reminder, expectedVersion);
-
-              const now = new Date();
-              const outboxMessages = reminder.uncommittedEvents.map((event: any) => ({
-                messageId: randomUUID(),
-                eventType: event.eventType,
-                payload: event,
-                createdAt: now,
-                processedAt: null,
-                idempotencyKey: `${correlationId}:${event.eventType}:${reminder.version}`,
-                deduplicationKey: `${reminderId}:${event.eventType}:${reminder.version}`,
-                replaySafe: false,
-                sideEffectFree: false,
+              const agentContext = {
+                intent: intentAction,
+                payload: payloadObj,
+                userId,
                 traceId,
                 correlationId,
-                causationId: messageId
-              }));
+                isReplay: false,
+                isSandbox: false,
+              };
 
-              await this.persistence.outboxStore.saveBulk(outboxMessages);
-              await uow.commit();
+              const routerResult = await this.agentRouter.route(intentAction, agentContext);
 
-              RuntimeEventBus.log('COMMAND_EXECUTED', 'COMMAND',
-                `Reminder acknowledgment command executed successfully for task ${taskId}`,
-                traceId,
-                { taskId }
-              );
-
-              // Render confirmation message to the user!
-              await this.sendReply(
-                userId,
-                this.renderer.renderCancellation(taskId),
-                messageId
-              );
-
-            } catch (err: any) {
-              await uow.rollback();
-              RuntimeEventBus.log('COMMAND_FAILED', 'ERROR',
-                `Failed to execute acknowledgment for task ${taskId}: ${err.message}`,
-                traceId
-              );
-              throw err;
-            }
-            break;
-          }
-
-          if (isListTasks || this.agentRouter?.canRoute(intentAction)) {
-            try {
-              if (this.agentRouter && this.agentRouter.canRoute(intentAction)) {
-                const agentContext = {
-                  intent: intentAction,
-                  payload: payloadObj,
-                  userId,
-                  traceId,
-                  correlationId,
-                  isReplay: false,
-                  isSandbox: false,
-                };
-
-                const routerResult = await this.agentRouter.route(intentAction, agentContext);
-
-                if (routerResult.routed) {
-                  const { result } = routerResult;
-                  await this.sendReply(userId, result.summaryReport, messageId);
-                } else {
-                  await this.sendReply(userId, "I couldn't process that request right now. Please try rephrasing.", messageId);
-                }
+              if (routerResult.routed) {
+                const { result } = routerResult;
+                await this.sendReply(userId, result.summaryReport, messageId);
               } else {
-                await this.sendReply(userId, "Calendar integration is currently offline.", messageId);
+                await this.sendReply(userId, "I couldn't process that request right now. Please try rephrasing.", messageId);
               }
             } catch (err: any) {
-              console.error('[AgentRouter] Calendar dispatch failed:', err);
-              await this.sendReply(userId, "I'm sorry, I ran into an issue with your calendar right now.", messageId);
+              console.error('[AgentRouter] Dispatch failed:', err);
+              await this.sendReply(userId, "I'm sorry, I encountered an error fulfilling your request.", messageId);
             }
-            break;
-          }
-          
-          
-          const title = payloadObj.title || 
-                        payloadObj.task || 
-                        payloadObj.action || 
-                        payloadObj.content || 
-                        payloadObj.text || 
-                        payloadObj.reminder || 
-                        payloadObj.memo || 
-                        payloadObj.description || 
-                        payloadObj.subject || 
-                        payloadObj.message || 
-                        messageText || 
-                        'Reminder';
-          const priority = payloadObj.priority || 'high';
-          const timezone = payloadObj.timezone || 'Asia/Kolkata';
-
-          // Resilient dueAt extraction
-          let dueAt = new Date();
-          if (payloadObj.dueAt) {
-            dueAt = new Date(payloadObj.dueAt);
           } else {
-            // Default to 2 minutes from now
-            dueAt = new Date(Date.now() + 2 * 60 * 1000);
+            RuntimeEventBus.log('UNROUTED_INTENT', 'ERROR',
+              `No agent available to route intent: ${intentAction}`,
+              traceId
+            );
+            await this.sendReply(userId, "I don't have an agent available to handle that request.", messageId);
           }
-
-          if (isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
-            dueAt = new Date(Date.now() + 2 * 60 * 1000);
-          }
-
-          // Build Command
-          const command = {
-            commandId,
-            commandDeduplicationKey: messageId,
-            title,
-            priority,
-            dueAt,
-            timezone,
-            userId // Pass user's WhatsApp number directly
-          };
-
-          // Build Context
-          const context = {
-            traceId,
-            correlationId,
-            userId,
-            sessionId: randomUUID(),
-            scopes: ['tasks:write'],
-            executionMode: 'PRODUCTION' as any, // Force production so reminders fire physically
-            tokenBudgetRemaining: 500000,
-            isReplay: false,
-            isSandbox: false
-          };
-
-          // Execute Task creation command!
-          const result = await this.commandExecutor.execute(command, context);
-
-          RuntimeEventBus.log('COMMAND_EXECUTED', 'COMMAND',
-            `Task creation command executed successfully: ${title}`,
-            traceId,
-            { commandId, taskId: result.taskId, dueAt: dueAt.toISOString() }
-          );
-
-          await this.sendReply(
-            userId,
-            this.renderer.renderConfirmation({
-              commandId,
-              commandDeduplicationKey: messageId,
-              actionType: actionIntent,
-              payload: payloadObj,
-              validatedAt: new Date(),
-              traceId,
-              correlationId,
-              expiresAt: dueAt,
-              isDryRun: false
-            }),
-            messageId
-          );
           break;
         }
 

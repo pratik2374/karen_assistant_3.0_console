@@ -50,7 +50,8 @@ import { BootSyncCoordinator } from '../../console/BootSyncCoordinator.js';
 import { ComposioClient } from '../../infrastructure/composio/ComposioClient.js';
 import { CalendarTool } from '../../tools/calendar/CalendarTool.js';
 import { CalendarAgent } from '../../agents/calendar/CalendarAgent.js';
-import { AgentRouter } from '../agents/AgentRouter.js';
+import { SystemOpsAgent } from '../../agents/system/SystemOpsAgent.js';
+import { AgentRouter } from '../../application/agents/AgentRouter.js';
 
 export interface ApiModule {
   app: express.Application;
@@ -181,8 +182,11 @@ export function buildApiModule(
     // New CalendarAgent domain coordinator
     const calendarAgentInstance = new CalendarAgent(calendarTool, calendarProjectionRepo);
 
+    // New SystemOpsAgent meta-coordinator
+    const systemOpsAgentInstance = new SystemOpsAgent(persistence, application.taskCommandExecutor);
+
     // AgentRouter — deterministic dispatcher wired to InboundMessagePipeline
-    agentRouter = new AgentRouter(calendarAgentInstance);
+    agentRouter = new AgentRouter(calendarAgentInstance, systemOpsAgentInstance);
     (pipeline as any).agentRouter = agentRouter;
 
     // Legacy CalendarSyncAgent still handles BullMQ-based outbound sync jobs

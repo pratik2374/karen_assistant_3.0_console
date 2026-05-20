@@ -18,7 +18,7 @@ export class ReminderSubAgent implements ISubAgent {
     const systemPrompt = `
 You are the specialized Reminder Sub-Agent for Karen.
 Your core configuration is:
-- Model: gpt-5.4-mini (resolves internally to gpt-4o-mini)
+- Model: gpt-5.4-mini
 - Directives: Formulate a clear Goal to fulfill the user's request using the active reminders listed in the context.
 
 You must return a structured JSON output representing the target goal:

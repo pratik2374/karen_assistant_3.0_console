@@ -1,5 +1,5 @@
-import { ISagaRepository } from '../../../application/ports/ISagaRepository';
-import { SagaSnapshot } from '../../../application/sagas/SagaBase';
+import { ISagaRepository } from '../../../application/ports/ISagaRepository.js';
+import { SagaSnapshot } from '../../../application/sagas/SagaBase.js';
 import { Db, Collection } from 'mongodb';
 
 export class MongoSagaRepository implements ISagaRepository {

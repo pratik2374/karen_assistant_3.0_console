@@ -1,8 +1,8 @@
-import { PersistenceModule } from './persistence.module';
-import { TaskCommandHandler, CreateTaskCommand, CreateTaskResult } from '../../application/handlers/TaskCommandHandler';
-import { CommandExecutionPipeline, ObservabilityStep, ReplayGuardStep } from '../../application/executor/CommandExecutionPipeline';
-import { ICommandExecutor, IQueryExecutor } from '../../application/executor/IExecutor';
-import { TaskQueryExecutor, GetTaskQuery, TaskReadModel } from '../../application/executor/TaskQueryExecutor';
+import { PersistenceModule } from './persistence.module.js';
+import { TaskCommandHandler, CreateTaskCommand, CreateTaskResult } from '../../application/handlers/TaskCommandHandler.js';
+import { CommandExecutionPipeline, ObservabilityStep, ReplayGuardStep } from '../../application/executor/CommandExecutionPipeline.js';
+import { ICommandExecutor, IQueryExecutor } from '../../application/executor/IExecutor.js';
+import { TaskQueryExecutor, GetTaskQuery, TaskReadModel } from '../../application/executor/TaskQueryExecutor.js';
 
 export interface ApplicationModule {
   taskCommandExecutor: ICommandExecutor<CreateTaskCommand, CreateTaskResult>;

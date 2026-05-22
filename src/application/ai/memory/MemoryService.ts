@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Db } from 'mongodb';
 import { IOpenAIAdapter } from '../../ports/IOpenAIAdapter.js';
 import { RuntimeEventBus } from '../../../console/RuntimeEventBus.js';

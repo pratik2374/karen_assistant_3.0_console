@@ -1,4 +1,4 @@
-import { DomainEvent } from '../../domain/shared/events/DomainEvent';
+import { DomainEvent } from '../../domain/shared/events/DomainEvent.js';
 
 export interface OutboxMessage {
   messageId: string;

@@ -1,4 +1,4 @@
-import { ValidatedCommand } from '../commands/CommandStandard';
+import { ValidatedCommand } from '../commands/CommandStandard.js';
 
 export class MessageRenderer {
   private karenGreetings = [

@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq';
-import { OutboxMessage } from '../../../application/ports/IOutboxStore';
-import { MessageEnvelope } from '../contracts/MessageEnvelope';
+import { OutboxMessage } from '../../../application/ports/IOutboxStore.js';
+import { MessageEnvelope } from '../contracts/MessageEnvelope.js';
 
 export class BullMQEventPublisher {
   constructor(private queues: Map<string, Queue>) {}

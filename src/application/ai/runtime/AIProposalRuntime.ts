@@ -1,11 +1,11 @@
-import { ContextEngine, RetrievalIntent } from '../ContextEngine';
-import { PromptRegistry } from '../prompts/PromptRegistry';
-import { SchemaRegistry } from '../schemas/SchemaRegistry';
-import { IOpenAIAdapter } from '../../ports/IOpenAIAdapter';
-import { ClarificationEngine } from './ClarificationEngine';
-import { AIProposal, ProposalType } from '../../commands/CommandStandard';
-import { AIObservabilityHook } from '../../../infrastructure/observability/metrics/AIObservabilityHook';
-import { IMemoryBlock } from '../../../domain/memory/MemoryTiers';
+import { ContextEngine, RetrievalIntent } from '../ContextEngine.js';
+import { PromptRegistry } from '../prompts/PromptRegistry.js';
+import { SchemaRegistry } from '../schemas/SchemaRegistry.js';
+import { IOpenAIAdapter } from '../../ports/IOpenAIAdapter.js';
+import { ClarificationEngine } from './ClarificationEngine.js';
+import { AIProposal, ProposalType } from '../../commands/CommandStandard.js';
+import { AIObservabilityHook } from '../../../infrastructure/observability/metrics/AIObservabilityHook.js';
+import { IMemoryBlock } from '../../../domain/memory/MemoryTiers.js';
 
 export class AIProposalRuntime {
   constructor(

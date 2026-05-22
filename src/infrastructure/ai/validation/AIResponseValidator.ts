@@ -1,4 +1,4 @@
-import { AIProposal, AIProposalSchema } from '../../../application/commands/CommandStandard';
+import { AIProposal, AIProposalSchema } from '../../../application/commands/CommandStandard.js';
 
 export class AIResponseValidator {
   public validate(rawJsonOutput: string): AIProposal {

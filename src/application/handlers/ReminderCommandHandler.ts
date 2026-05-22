@@ -1,9 +1,9 @@
-import { IApplicationHandler } from '../executor/CommandExecutionPipeline';
-import { IExecutionContext } from '../../composition/context/ExecutionContext';
-import { IRepository } from '../ports/IRepository';
-import { IOutboxStore, OutboxMessage } from '../ports/IOutboxStore';
-import { IUnitOfWork } from '../ports/IUnitOfWork';
-import { ReminderAggregate, EscalationCommand } from '../../domain/reminder/ReminderAggregate';
+import { IApplicationHandler } from '../executor/CommandExecutionPipeline.js';
+import { IExecutionContext } from '../../composition/context/ExecutionContext.js';
+import { IRepository } from '../ports/IRepository.js';
+import { IOutboxStore, OutboxMessage } from '../ports/IOutboxStore.js';
+import { IUnitOfWork } from '../ports/IUnitOfWork.js';
+import { ReminderAggregate, EscalationCommand } from '../../domain/reminder/ReminderAggregate.js';
 import { randomUUID } from 'crypto';
 
 export class ReminderCommandHandler

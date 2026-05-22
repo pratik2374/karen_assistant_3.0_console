@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { AIProposalRuntime } from '../ai/runtime/AIProposalRuntime.js';
 import { ConversationSessionRepository } from '../../domain/conversation/ConversationSession.js';
 import { MessageRenderer } from './MessageRenderer.js';

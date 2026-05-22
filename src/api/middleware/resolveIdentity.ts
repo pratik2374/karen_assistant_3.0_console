@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { IRequestIdentity, ExecutionModeHeader } from '../dtos/TransportDTOs';
-import { ExecutionMode } from '../../infrastructure/observability/logging/IStructuredLogger';
+import { IRequestIdentity, ExecutionModeHeader } from '../dtos/TransportDTOs.js';
+import { ExecutionMode } from '../../infrastructure/observability/logging/IStructuredLogger.js';
 import { randomUUID } from 'crypto';
 
 declare global {

@@ -1,4 +1,4 @@
-import { CompensationAction, CompensationStrategy } from './CompensationStrategy';
+import { CompensationAction, CompensationStrategy } from './CompensationStrategy.js';
 
 export interface SagaSnapshot {
   sagaId: string;

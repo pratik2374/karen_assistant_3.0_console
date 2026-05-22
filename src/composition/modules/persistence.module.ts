@@ -1,9 +1,9 @@
 import { MongoClient, Db } from 'mongodb';
-import { RuntimeConfig } from '../config/RuntimeConfig';
-import { MongoUnitOfWork } from '../../infrastructure/persistence/mongo/uow/MongoUnitOfWork';
-import { MongoOutboxStore } from '../../infrastructure/persistence/mongo/outbox/MongoOutboxStore';
-import { TaskMongoRepository } from '../../infrastructure/persistence/mongo/repositories/TaskMongoRepository';
-import { ReminderMongoRepository } from '../../infrastructure/persistence/mongo/repositories/ReminderMongoRepository';
+import { RuntimeConfig } from '../config/RuntimeConfig.js';
+import { MongoUnitOfWork } from '../../infrastructure/persistence/mongo/uow/MongoUnitOfWork.js';
+import { MongoOutboxStore } from '../../infrastructure/persistence/mongo/outbox/MongoOutboxStore.js';
+import { TaskMongoRepository } from '../../infrastructure/persistence/mongo/repositories/TaskMongoRepository.js';
+import { ReminderMongoRepository } from '../../infrastructure/persistence/mongo/repositories/ReminderMongoRepository.js';
 
 export interface PersistenceModule {
   client: MongoClient;

@@ -18,8 +18,8 @@ export class WhatsAppAdapter extends ToolExecutionGateway {
   }
 
   async sendMessage(message: WhatsAppMessage, isReplay: boolean, isSandbox: boolean): Promise<void> {
-    const accessToken = this.config?.WHATSAPP_ACCESS_TOKEN ?? process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneId = this.config?.WHATSAPP_PHONE_NUMBER_ID ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const accessToken = (this.config as any)?.WHATSAPP_ACCESS_TOKEN ?? process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneId = (this.config as any)?.WHATSAPP_PHONE_NUMBER_ID ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
     const executionMode = this.config?.EXECUTION_MODE ?? process.env.EXECUTION_MODE ?? 'SANDBOX';
 
     const cleanTo = message.to.replace(/^\+/, '');
@@ -63,6 +63,11 @@ export class WhatsAppAdapter extends ToolExecutionGateway {
         RuntimeEventBus.log('WHATSAPP_SEND_RESPONSE', 'OUTBOUND', `Response status: ${response.status} | Body: ${resBody}`);
 
         if (!response.ok) {
+          if (response.status === 400) {
+            RuntimeEventBus.log('WHATSAPP_SEND_REJECTED', 'ERROR', `Graph API rejected message (HTTP 400). It will not be retried. Body: ${resBody}`);
+            console.warn(`[WHATSAPP] Dropping message to ${cleanTo} due to HTTP 400 (e.g. unverified sandbox number).`);
+            return; // Do not throw, so BullMQ doesn't infinitely retry bad requests
+          }
           throw new Error(`Graph API returned HTTP ${response.status}: ${resBody}`);
         }
 

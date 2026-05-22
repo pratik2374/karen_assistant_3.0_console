@@ -1,5 +1,5 @@
-import { ToolExecutionGateway } from '../gateway/ToolExecutionGateway';
-import { CircuitBreaker } from '../../resiliency/CircuitBreaker';
+import { ToolExecutionGateway } from '../gateway/ToolExecutionGateway.js';
+import { CircuitBreaker } from '../../resiliency/CircuitBreaker.js';
 
 export interface GmailDraft {
   to: string;

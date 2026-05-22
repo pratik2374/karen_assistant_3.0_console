@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { IOpenAIAdapter, OpenAICompletionRequest } from '../../../application/ports/IOpenAIAdapter';
+import { IOpenAIAdapter, OpenAICompletionRequest } from '../../../application/ports/IOpenAIAdapter.js';
 
 export class OpenAIAdapter implements IOpenAIAdapter {
   private client: OpenAI;

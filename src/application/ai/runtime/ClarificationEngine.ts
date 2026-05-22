@@ -1,4 +1,4 @@
-import { AIProposal, ProposalType } from '../../commands/CommandStandard';
+import { AIProposal, ProposalType } from '../../commands/CommandStandard.js';
 import { randomUUID } from 'crypto';
 
 export class ClarificationEngine {

@@ -1,5 +1,5 @@
-import { IQueryExecutor } from './IExecutor';
-import { IExecutionContext } from '../../composition/context/ExecutionContext';
+import { IQueryExecutor } from './IExecutor.js';
+import { IExecutionContext } from '../../composition/context/ExecutionContext.js';
 import { Db } from 'mongodb';
 
 export interface GetTaskQuery {

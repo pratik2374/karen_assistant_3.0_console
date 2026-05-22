@@ -1,6 +1,6 @@
-import { IOutboxStore } from '../../../application/ports/IOutboxStore';
-import { RedisDistributedLock } from '../redis/RedisDistributedLock';
-import { BullMQEventPublisher } from '../bullmq/BullMQEventPublisher';
+import { IOutboxStore } from '../../../application/ports/IOutboxStore.js';
+import { RedisDistributedLock } from '../redis/RedisDistributedLock.js';
+import { BullMQEventPublisher } from '../bullmq/BullMQEventPublisher.js';
 
 export class OutboxDispatcher {
   private isRunning: boolean = false;

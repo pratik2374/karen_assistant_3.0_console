@@ -94,4 +94,9 @@ export class CalendarSandboxAdapter extends ToolExecutionGateway implements ICal
     console.log(`[CALENDAR SANDBOX] Fetching event: ${googleEventId}`);
     return null;
   }
+
+  async listEvents(timeMin: Date, timeMax: Date, isSandbox: boolean): Promise<any[]> {
+    console.log(`[CALENDAR SANDBOX] Listing events between ${timeMin.toISOString()} and ${timeMax.toISOString()}`);
+    return [];
+  }
 }

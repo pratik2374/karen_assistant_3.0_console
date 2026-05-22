@@ -1,4 +1,4 @@
-import { ITimerStore, TimerRecord } from '../../../application/ports/ITimerStore';
+import { ITimerStore, TimerRecord } from '../../../application/ports/ITimerStore.js';
 import { Db, Collection } from 'mongodb';
 
 export class MongoTimerStore implements ITimerStore {

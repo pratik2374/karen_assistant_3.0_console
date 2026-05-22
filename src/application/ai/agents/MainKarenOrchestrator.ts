@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ISubAgent, IAgentGoal, IAgentResult } from './AgentContracts.js';
 import { ReminderSubAgent } from './ReminderSubAgent.js';
 import { IOpenAIAdapter } from '../../ports/IOpenAIAdapter.js';

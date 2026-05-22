@@ -1,6 +1,6 @@
-import { MessageEnvelope } from '../contracts/MessageEnvelope';
-import { RedisIdempotencyStore, ProcessingState } from './RedisIdempotencyStore';
-import { IDeadLetterQueue } from '../../../application/ports/DeadLetterContracts';
+import { MessageEnvelope } from '../contracts/MessageEnvelope.js';
+import { RedisIdempotencyStore, ProcessingState } from './RedisIdempotencyStore.js';
+import { IDeadLetterQueue } from '../../../application/ports/DeadLetterContracts.js';
 
 export abstract class IdempotentConsumer<TPayload> {
   constructor(

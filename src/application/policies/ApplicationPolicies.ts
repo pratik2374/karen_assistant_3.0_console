@@ -1,4 +1,4 @@
-import { TimeContext } from '../../domain/shared/value-objects/TimeContext';
+import { TimeContext } from '../../domain/shared/value-objects/TimeContext.js';
 
 export interface SchedulingPolicy {
   evaluateNextReminder(

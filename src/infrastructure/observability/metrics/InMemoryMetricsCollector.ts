@@ -1,4 +1,4 @@
-import { IMetricsCollector, ICounter, IGauge, IHistogram } from './IMetricsCollector';
+import { IMetricsCollector, ICounter, IGauge, IHistogram } from './IMetricsCollector.js';
 
 class InMemoryCounter implements ICounter {
   private counts: Map<string, number> = new Map();

@@ -1,4 +1,4 @@
-import { RuntimeConfig } from '../config/RuntimeConfig';
+import { RuntimeConfig } from '../config/RuntimeConfig.js';
 
 // Runtime feature flags — checked at execution time, not boot time.
 // Allows toggling behavior without redeploying the service.

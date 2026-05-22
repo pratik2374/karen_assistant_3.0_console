@@ -2,12 +2,12 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
-import { resolveIdentity } from '../middleware/resolveIdentity';
-import { createTaskRoutes } from './routes/taskRoutes';
-import { createWebhookRoutes } from './routes/webhookRoutes';
-import { TaskController } from './controllers/TaskController';
-import { WhatsAppWebhookController } from './controllers/WhatsAppWebhookController';
-import { WebhookIdempotencyGuard } from './middleware/idempotency/WebhookIdempotencyGuard';
+import { resolveIdentity } from '../middleware/resolveIdentity.js';
+import { createTaskRoutes } from './routes/taskRoutes.js';
+import { createWebhookRoutes } from './routes/webhookRoutes.js';
+import { TaskController } from './controllers/TaskController.js';
+import { WhatsAppWebhookController } from './controllers/WhatsAppWebhookController.js';
+import { WebhookIdempotencyGuard } from './middleware/idempotency/WebhookIdempotencyGuard.js';
 
 export function createApp(
   taskController: TaskController,

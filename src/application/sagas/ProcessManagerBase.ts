@@ -1,4 +1,4 @@
-import { DomainEvent } from '../../domain/shared/events/DomainEvent';
+import { DomainEvent } from '../../domain/shared/events/DomainEvent.js';
 
 // Process Managers OBSERVE workflows and track state/analytics, but DO NOT dispatch orchestration commands.
 export abstract class ProcessManagerBase<TState> {

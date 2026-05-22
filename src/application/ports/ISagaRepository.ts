@@ -1,4 +1,4 @@
-import { SagaSnapshot } from '../sagas/SagaBase';
+import { SagaSnapshot } from '../sagas/SagaBase.js';
 
 export interface ISagaRepository {
   save(saga: SagaSnapshot, expectedVersion?: number): Promise<void>;

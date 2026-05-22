@@ -1,4 +1,4 @@
-import { DomainError, DomainInvariantError } from '../../domain/shared/errors/DomainErrors';
+import { DomainError, DomainInvariantError } from '../../domain/shared/errors/DomainErrors.js';
 import { Response } from 'express';
 
 export interface HttpErrorResponse {

@@ -1,4 +1,4 @@
-import { ITracer, ISpan, SpanContext } from './ITracer';
+import { ITracer, ISpan, SpanContext } from './ITracer.js';
 import { randomUUID } from 'crypto';
 
 class ConsoleSpan implements ISpan {

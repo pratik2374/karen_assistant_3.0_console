@@ -1,6 +1,6 @@
-import { IDocumentMapper, IMongoDocument } from './IDocumentMapper';
-import { TaskAggregate } from '../../../../domain/task/TaskAggregate';
-import { TaskState } from '../../../../contracts/StateMachines';
+import { IDocumentMapper, IMongoDocument } from './IDocumentMapper.js';
+import { TaskAggregate } from '../../../../domain/task/TaskAggregate.js';
+import { TaskState } from '../../../../contracts/StateMachines.js';
 
 export interface TaskMongoDocument extends IMongoDocument {
   state: string;

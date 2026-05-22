@@ -1,9 +1,9 @@
-import { RuntimeConfig } from '../config/RuntimeConfig';
-import { OpenAIAdapter } from '../../infrastructure/ai/openai/OpenAIAdapter';
-import { DeterministicContextSanitizer } from '../../infrastructure/ai/security/ContextSanitizer';
-import { AIResponseValidator } from '../../infrastructure/ai/validation/AIResponseValidator';
-import { CircuitBreaker } from '../../infrastructure/resiliency/CircuitBreaker';
-import { AITokenBudgetPolicy } from '../../application/policies/ApplicationPolicies';
+import { RuntimeConfig } from '../config/RuntimeConfig.js';
+import { OpenAIAdapter } from '../../infrastructure/ai/openai/OpenAIAdapter.js';
+import { DeterministicContextSanitizer } from '../../infrastructure/ai/security/ContextSanitizer.js';
+import { AIResponseValidator } from '../../infrastructure/ai/validation/AIResponseValidator.js';
+import { CircuitBreaker } from '../../infrastructure/resiliency/CircuitBreaker.js';
+import { AITokenBudgetPolicy } from '../../application/policies/ApplicationPolicies.js';
 
 export interface AIModule {
   openAIAdapter: OpenAIAdapter;

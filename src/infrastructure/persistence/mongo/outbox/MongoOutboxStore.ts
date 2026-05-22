@@ -1,5 +1,5 @@
 import { Collection, ClientSession, Db } from 'mongodb';
-import { IOutboxStore, OutboxMessage } from '../../../../application/ports/IOutboxStore';
+import { IOutboxStore, OutboxMessage } from '../../../../application/ports/IOutboxStore.js';
 
 export class MongoOutboxStore implements IOutboxStore {
   private collection: Collection<OutboxMessage>;

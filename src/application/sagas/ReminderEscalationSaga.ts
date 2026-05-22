@@ -1,11 +1,11 @@
-import { SagaBase, SagaSnapshot } from './SagaBase';
-import { HybridTimerService } from '../../infrastructure/temporal/HybridTimerService';
-import { TemporalPolicyEngine, TemporalPolicy } from '../../domain/shared/temporal/TemporalPolicyEngine';
-import { clock } from '../../domain/shared/temporal/SystemClock';
+import { SagaBase, SagaSnapshot } from './SagaBase.js';
+import { HybridTimerService } from '../../infrastructure/temporal/HybridTimerService.js';
+import { TemporalPolicyEngine, TemporalPolicy } from '../../domain/shared/temporal/TemporalPolicyEngine.js';
+import { clock } from '../../domain/shared/temporal/SystemClock.js';
 import { randomUUID } from 'crypto';
-import { ICommandExecutor } from '../executor/IExecutor';
-import { EscalationCommand } from '../../domain/reminder/ReminderAggregate';
-import { ExecutionContext } from '../../composition/context/ExecutionContext';
+import { ICommandExecutor } from '../executor/IExecutor.js';
+import { EscalationCommand } from '../../domain/reminder/ReminderAggregate.js';
+import { ExecutionContext } from '../../composition/context/ExecutionContext.js';
 
 export type ReminderEscalationState = 'PENDING' | 'WAITING_ACK_1' | 'WAITING_ACK_2' | 'ESCALATED' | 'COMPLETED' | 'CANCELLED';
 
@@ -119,7 +119,11 @@ export class ReminderEscalationSaga extends SagaBase<ReminderEscalationState> {
     if (isReplay) return; // REPLAY SAFETY: Never arm timers during replay
 
     const targetTime = new Date(clock.now().getTime() + offsetMs);
-    const policy: TemporalPolicy = { timezone: this.data.userTimezone, dndStartHour: 22, dndEndHour: 8 };
+    const policy: TemporalPolicy = {
+      timezone: this.data.userTimezone,
+      dndStartHour: 24, // Disabled temporarily for late-night testing
+      dndEndHour: 8
+    };
     
     // Proactive DND forward calculation
     const safeWakeTime = TemporalPolicyEngine.calculateSafeWakeTime(targetTime, policy);

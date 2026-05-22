@@ -1,8 +1,8 @@
-import { AggregateRoot } from '../shared/core/AggregateRoot';
-import { DomainEvent } from '../shared/events/DomainEvent';
-import { EventFactory } from '../shared/events/EventFactory';
-import { BoundedAutonomyConfigs } from '../shared/core/KarenPrinciples';
-import { DomainInvariantError } from '../shared/errors/DomainErrors';
+import { AggregateRoot } from '../shared/core/AggregateRoot.js';
+import { DomainEvent } from '../shared/events/DomainEvent.js';
+import { EventFactory } from '../shared/events/EventFactory.js';
+import { BoundedAutonomyConfigs } from '../shared/core/KarenPrinciples.js';
+import { DomainInvariantError } from '../shared/errors/DomainErrors.js';
 
 export class BehaviorAggregate extends AggregateRoot {
   private roastLevel!: number;

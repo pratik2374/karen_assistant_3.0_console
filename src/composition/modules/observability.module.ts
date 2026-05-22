@@ -1,11 +1,11 @@
-import { RuntimeConfig } from '../config/RuntimeConfig';
-import { ConsoleStructuredLogger } from '../../infrastructure/observability/logging/ConsoleStructuredLogger';
-import { ConsoleTracer } from '../../infrastructure/observability/tracing/ConsoleTracer';
-import { InMemoryMetricsCollector } from '../../infrastructure/observability/metrics/InMemoryMetricsCollector';
-import { HealthAggregator } from '../../infrastructure/observability/health/HealthAggregator';
-import { HumanOverrideAuditLogger } from '../../infrastructure/observability/audit/HumanOverrideAuditLogger';
-import { ReplayObservabilityTracker } from '../../infrastructure/observability/replay/ReplayObservabilityTracker';
-import { SagaObservabilityHook } from '../../infrastructure/observability/metrics/SagaObservabilityHook';
+import { RuntimeConfig } from '../config/RuntimeConfig.js';
+import { ConsoleStructuredLogger } from '../../infrastructure/observability/logging/ConsoleStructuredLogger.js';
+import { ConsoleTracer } from '../../infrastructure/observability/tracing/ConsoleTracer.js';
+import { InMemoryMetricsCollector } from '../../infrastructure/observability/metrics/InMemoryMetricsCollector.js';
+import { HealthAggregator } from '../../infrastructure/observability/health/HealthAggregator.js';
+import { HumanOverrideAuditLogger } from '../../infrastructure/observability/audit/HumanOverrideAuditLogger.js';
+import { ReplayObservabilityTracker } from '../../infrastructure/observability/replay/ReplayObservabilityTracker.js';
+import { SagaObservabilityHook } from '../../infrastructure/observability/metrics/SagaObservabilityHook.js';
 
 export interface ObservabilityModule {
   logger: ConsoleStructuredLogger;

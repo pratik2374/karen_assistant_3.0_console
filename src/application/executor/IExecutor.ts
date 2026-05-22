@@ -1,4 +1,4 @@
-import { IExecutionContext } from '../../composition/context/ExecutionContext';
+import { IExecutionContext } from '../../composition/context/ExecutionContext.js';
 
 // -----------------------------------------------------------------------
 // ICommandExecutor — the ONLY way controllers invoke application handlers.

@@ -158,7 +158,7 @@ export class KarenCLI {
         .find({ sagaId: { $in: sagaIds } })
         .toArray();
 
-      const sagaMap = new Map(sagas.map((s: any) => [s.sagaId, s]));
+      const sagaMap = new Map<string, any>(sagas.map((s: any) => [s.sagaId, s]));
 
       // 4. Render Table
       const t = new Table({

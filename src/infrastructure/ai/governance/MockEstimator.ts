@@ -1,4 +1,4 @@
-import { ITokenEstimator } from '../../../application/ai/governance/ITokenEstimator';
+import { ITokenEstimator } from '../../../application/ai/governance/ITokenEstimator.js';
 
 export class MockEstimator implements ITokenEstimator {
   constructor(private fixedTokenPerChar: number = 0.25) {}

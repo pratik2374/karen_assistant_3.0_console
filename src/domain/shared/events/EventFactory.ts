@@ -1,4 +1,4 @@
-import { DomainEvent } from './DomainEvent';
+import { DomainEvent } from './DomainEvent.js';
 import * as crypto from 'crypto';
 
 export class EventFactory {

@@ -43,7 +43,7 @@ export interface ComposioCalendarEvent {
 }
 
 export class ComposioClient {
-  private composio: Composio;
+  private composio: any;
   private userId: string;
 
   constructor(apiKey: string, userId: string) {
@@ -58,7 +58,7 @@ export class ComposioClient {
 
   public async getCalendarTools() {
     const session = await this.composio.create(this.userId);
-    return session.tools({ toolkits: ['googlecalendar'] });
+    return session.tools({ toolkits: ['googlecalendar'] } as any);
   }
 
   // ── Calendar Tool Executions ──────────────────────────────────────────────
@@ -78,11 +78,11 @@ export class ComposioClient {
       });
 
       RuntimeEventBus.log('COMPOSIO_REQUEST', 'TRANSPORT',
-        `GOOGLECALENDAR_EVENTS_LIST → ${result?.data?.items?.length ?? 0} events`,
+        `GOOGLECALENDAR_EVENTS_LIST → ${(result as any)?.data?.items?.length ?? 0} events`,
         traceId
       );
 
-      return result?.data?.items || [];
+      return (result as any)?.data?.items || [];
     } catch (err: any) {
       RuntimeEventBus.log('COMPOSIO_ERROR', 'ERROR',
         `GOOGLECALENDAR_EVENTS_LIST failed: ${err.message}`, traceId);
@@ -182,9 +182,9 @@ export class ComposioClient {
       });
 
       RuntimeEventBus.log('COMPOSIO_REQUEST', 'TRANSPORT',
-        `GOOGLECALENDAR_FIND_EVENT query="${query}" → ${result?.data?.items?.length ?? 0} results`, traceId);
+        `GOOGLECALENDAR_FIND_EVENT query="${query}" → ${(result as any)?.data?.items?.length ?? 0} results`, traceId);
 
-      return result?.data?.items || [];
+      return (result as any)?.data?.items || [];
     } catch (err: any) {
       RuntimeEventBus.log('COMPOSIO_ERROR', 'ERROR',
         `GOOGLECALENDAR_FIND_EVENT failed: ${err.message}`, traceId);

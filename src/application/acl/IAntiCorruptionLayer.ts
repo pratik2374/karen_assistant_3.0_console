@@ -1,4 +1,4 @@
-import { ValidatedCommand } from '../commands/CommandStandard';
+import { ValidatedCommand } from '../commands/CommandStandard.js';
 
 // Untrusted external payload (e.g. from WhatsApp, API Gateway)
 export interface ExternalDTO {

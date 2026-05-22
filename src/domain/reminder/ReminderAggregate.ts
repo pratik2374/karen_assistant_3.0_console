@@ -1,9 +1,9 @@
-import { AggregateRoot } from '../shared/core/AggregateRoot';
-import { DomainEvent } from '../shared/events/DomainEvent';
-import { EventFactory } from '../shared/events/EventFactory';
-import { TimeContext } from '../shared/value-objects/TimeContext';
-import { ReminderState } from '../../contracts/StateMachines';
-import { DndViolationError, DomainInvariantError } from '../shared/errors/DomainErrors';
+import { AggregateRoot } from '../shared/core/AggregateRoot.js';
+import { DomainEvent } from '../shared/events/DomainEvent.js';
+import { EventFactory } from '../shared/events/EventFactory.js';
+import { TimeContext } from '../shared/value-objects/TimeContext.js';
+import { ReminderState } from '../../contracts/StateMachines.js';
+import { DndViolationError, DomainInvariantError } from '../shared/errors/DomainErrors.js';
 
 export interface EscalationCommand {
   taskId: string;

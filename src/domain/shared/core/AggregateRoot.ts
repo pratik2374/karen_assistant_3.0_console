@@ -1,4 +1,4 @@
-import { DomainEvent } from '../events/DomainEvent';
+import { DomainEvent } from '../events/DomainEvent.js';
 
 export abstract class AggregateRoot {
   protected _id: string;

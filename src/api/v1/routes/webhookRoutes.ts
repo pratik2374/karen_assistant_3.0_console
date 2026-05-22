@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
-import { WhatsAppWebhookController } from '../controllers/WhatsAppWebhookController';
-import { WebhookIdempotencyGuard } from '../middleware/idempotency/WebhookIdempotencyGuard';
+import { WhatsAppWebhookController } from '../controllers/WhatsAppWebhookController.js';
+import { WebhookIdempotencyGuard } from '../middleware/idempotency/WebhookIdempotencyGuard.js';
 
 export function createWebhookRoutes(controller: WhatsAppWebhookController, guard: WebhookIdempotencyGuard): Router {
   const router = Router();

@@ -1,4 +1,4 @@
-import { ITokenEstimator } from '../../../application/ai/governance/ITokenEstimator';
+import { ITokenEstimator } from '../../../application/ai/governance/ITokenEstimator.js';
 
 export class HeuristicFallbackEstimator implements ITokenEstimator {
   // A safe heuristic is 1 token ~ 4 characters in English

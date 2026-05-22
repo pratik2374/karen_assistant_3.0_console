@@ -1,9 +1,9 @@
-import { AggregateRoot } from '../shared/core/AggregateRoot';
-import { DomainEvent } from '../shared/events/DomainEvent';
-import { EventFactory } from '../shared/events/EventFactory';
-import { TaskState } from '../../contracts/StateMachines';
-import { DomainInvariantError, TemporalValidityError } from '../shared/errors/DomainErrors';
-import { TimeContext } from '../shared/value-objects/TimeContext';
+import { AggregateRoot } from '../shared/core/AggregateRoot.js';
+import { DomainEvent } from '../shared/events/DomainEvent.js';
+import { EventFactory } from '../shared/events/EventFactory.js';
+import { TaskState } from '../../contracts/StateMachines.js';
+import { DomainInvariantError, TemporalValidityError } from '../shared/errors/DomainErrors.js';
+import { TimeContext } from '../shared/value-objects/TimeContext.js';
 
 export interface CommandContext {
   traceId: string;

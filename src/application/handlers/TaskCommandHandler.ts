@@ -1,10 +1,10 @@
-import { IApplicationHandler } from '../executor/CommandExecutionPipeline';
-import { IExecutionContext } from '../../composition/context/ExecutionContext';
-import { IRepository } from '../ports/IRepository';
-import { IOutboxStore, OutboxMessage } from '../ports/IOutboxStore';
-import { IUnitOfWork } from '../ports/IUnitOfWork';
-import { TaskAggregate } from '../../domain/task/TaskAggregate';
-import { TimeContext } from '../../domain/shared/value-objects/TimeContext';
+import { IApplicationHandler } from '../executor/CommandExecutionPipeline.js';
+import { IExecutionContext } from '../../composition/context/ExecutionContext.js';
+import { IRepository } from '../ports/IRepository.js';
+import { IOutboxStore, OutboxMessage } from '../ports/IOutboxStore.js';
+import { IUnitOfWork } from '../ports/IUnitOfWork.js';
+import { TaskAggregate } from '../../domain/task/TaskAggregate.js';
+import { TimeContext } from '../../domain/shared/value-objects/TimeContext.js';
 import { randomUUID } from 'crypto';
 
 export interface CreateTaskCommand {

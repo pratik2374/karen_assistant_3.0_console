@@ -1,41 +1,41 @@
-import { ApplicationModule } from './application.module';
-import { MessagingModule } from './messaging.module';
-import { AIModule } from './ai.module';
-import { PersistenceModule } from './persistence.module';
-import { TaskController } from '../../api/v1/controllers/TaskController';
-import { WhatsAppWebhookController } from '../../api/v1/controllers/WhatsAppWebhookController';
-import { WebhookIdempotencyGuard } from '../../api/v1/middleware/idempotency/WebhookIdempotencyGuard';
-import { InboundMessagePipeline } from '../../application/conversation/InboundMessagePipeline';
-import { ConversationSessionRepository } from '../../domain/conversation/ConversationSession';
-import { MessageRenderer } from '../../application/conversation/MessageRenderer';
-import { WhatsAppAdapter } from '../../infrastructure/external/whatsapp/WhatsAppAdapter';
-import { AIProposalRuntime } from '../../application/ai/runtime/AIProposalRuntime';
-import { PromptRegistry } from '../../application/ai/prompts/PromptRegistry';
-import { SchemaRegistry } from '../../application/ai/schemas/SchemaRegistry';
-import { ClarificationEngine } from '../../application/ai/runtime/ClarificationEngine';
-import { HeuristicFallbackEstimator } from '../../infrastructure/ai/governance/HeuristicFallbackEstimator';
-import { TokenBudgetManager } from '../../application/ai/governance/TokenBudgetManager';
-import { DeterministicContextSanitizer } from '../../infrastructure/ai/security/ContextSanitizer';
-import { ContextObservabilityHook } from '../../infrastructure/observability/metrics/ContextObservabilityHook';
-import { AIObservabilityHook } from '../../infrastructure/observability/metrics/AIObservabilityHook';
-import { ContextEngine } from '../../application/ai/ContextEngine';
-import { createApp } from '../../api/v1/app';
-import { ReminderSubAgent } from '../../application/ai/agents/ReminderSubAgent';
-import { MainKarenOrchestrator } from '../../application/ai/agents/MainKarenOrchestrator';
-import { MemoryService } from '../../application/ai/memory/MemoryService';
+import { ApplicationModule } from './application.module.js';
+import { MessagingModule } from './messaging.module.js';
+import { AIModule } from './ai.module.js';
+import { PersistenceModule } from './persistence.module.js';
+import { TaskController } from '../../api/v1/controllers/TaskController.js';
+import { WhatsAppWebhookController } from '../../api/v1/controllers/WhatsAppWebhookController.js';
+import { WebhookIdempotencyGuard } from '../../api/v1/middleware/idempotency/WebhookIdempotencyGuard.js';
+import { InboundMessagePipeline } from '../../application/conversation/InboundMessagePipeline.js';
+import { ConversationSessionRepository } from '../../domain/conversation/ConversationSession.js';
+import { MessageRenderer } from '../../application/conversation/MessageRenderer.js';
+import { WhatsAppAdapter } from '../../infrastructure/external/whatsapp/WhatsAppAdapter.js';
+import { AIProposalRuntime } from '../../application/ai/runtime/AIProposalRuntime.js';
+import { PromptRegistry } from '../../application/ai/prompts/PromptRegistry.js';
+import { SchemaRegistry } from '../../application/ai/schemas/SchemaRegistry.js';
+import { ClarificationEngine } from '../../application/ai/runtime/ClarificationEngine.js';
+import { HeuristicFallbackEstimator } from '../../infrastructure/ai/governance/HeuristicFallbackEstimator.js';
+import { TokenBudgetManager } from '../../application/ai/governance/TokenBudgetManager.js';
+import { DeterministicContextSanitizer } from '../../infrastructure/ai/security/ContextSanitizer.js';
+import { ContextObservabilityHook } from '../../infrastructure/observability/metrics/ContextObservabilityHook.js';
+import { AIObservabilityHook } from '../../infrastructure/observability/metrics/AIObservabilityHook.js';
+import { ContextEngine } from '../../application/ai/ContextEngine.js';
+import { createApp } from '../../api/v1/app.js';
+import { ReminderSubAgent } from '../../application/ai/agents/ReminderSubAgent.js';
+import { MainKarenOrchestrator } from '../../application/ai/agents/MainKarenOrchestrator.js';
+import { MemoryService } from '../../application/ai/memory/MemoryService.js';
 import express from 'express';
 
 import { RuntimeConfig } from '../config/RuntimeConfig.js';
 
 // Timer and Saga Orchestration Imports
-import { MongoSagaRepository } from '../../infrastructure/persistence/mongodb/MongoSagaRepository';
-import { MongoTimerStore } from '../../infrastructure/persistence/mongodb/MongoTimerStore';
-import { HybridTimerService } from '../../infrastructure/temporal/HybridTimerService';
-import { ReminderCommandHandler } from '../../application/handlers/ReminderCommandHandler';
-import { CommandExecutionPipeline, ObservabilityStep, ReplayGuardStep } from '../../application/executor/CommandExecutionPipeline';
-import { SagaDispatcher } from '../../application/sagas/SagaDispatcher';
-import { SagaObservabilityHook } from '../../infrastructure/observability/metrics/SagaObservabilityHook';
-import { BullMQConsumerRegistry } from '../../infrastructure/messaging/bullmq/BullMQConsumerRegistry';
+import { MongoSagaRepository } from '../../infrastructure/persistence/mongodb/MongoSagaRepository.js';
+import { MongoTimerStore } from '../../infrastructure/persistence/mongodb/MongoTimerStore.js';
+import { HybridTimerService } from '../../infrastructure/temporal/HybridTimerService.js';
+import { ReminderCommandHandler } from '../../application/handlers/ReminderCommandHandler.js';
+import { CommandExecutionPipeline, ObservabilityStep, ReplayGuardStep } from '../../application/executor/CommandExecutionPipeline.js';
+import { SagaDispatcher } from '../../application/sagas/SagaDispatcher.js';
+import { SagaObservabilityHook } from '../../infrastructure/observability/metrics/SagaObservabilityHook.js';
+import { BullMQConsumerRegistry } from '../../infrastructure/messaging/bullmq/BullMQConsumerRegistry.js';
 import { Queue } from 'bullmq';
 
 // Calendar Sync Imports
@@ -45,6 +45,7 @@ import { CalendarSyncWorker } from '../../infrastructure/workers/CalendarSyncWor
 import { CalendarReconciliationWorker } from '../../infrastructure/workers/CalendarReconciliationWorker.js';
 import { CircuitBreaker } from '../../infrastructure/resiliency/CircuitBreaker.js';
 import { BootSyncCoordinator } from '../../console/BootSyncCoordinator.js';
+import { CalendarBootstrapService } from '../../console/CalendarBootstrapService.js';
 
 // New Multi-Agent Architecture
 import { ComposioClient } from '../../infrastructure/composio/ComposioClient.js';
@@ -58,7 +59,7 @@ export interface ApiModule {
   timerService?: HybridTimerService;
   sagaDispatcher?: SagaDispatcher;
   consumerRegistry?: BullMQConsumerRegistry;
-  bootSyncCoordinator?: BootSyncCoordinator;
+  calendarBootstrapService?: CalendarBootstrapService;
 }
 
 export function buildApiModule(
@@ -91,7 +92,8 @@ export function buildApiModule(
   );
 
   // Build transport layer
-  const whatsappAdapter = new WhatsAppAdapter(ai.circuitBreaker, config);
+  const whatsappCircuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeoutMs: 30000 });
+  const whatsappAdapter = new WhatsAppAdapter(whatsappCircuitBreaker, config);
   const sessionRepo = new ConversationSessionRepository();
   const renderer = new MessageRenderer();
 
@@ -135,7 +137,7 @@ export function buildApiModule(
   let calendarSyncWorker: CalendarSyncWorker | undefined;
   let calendarReconciliationWorker: CalendarReconciliationWorker | undefined;
   
-  let bootSyncCoordinator: BootSyncCoordinator | undefined;
+  let calendarBootstrapService: CalendarBootstrapService | undefined;
   let agentRouter: AgentRouter | undefined;
 
   if (persistence) {
@@ -194,12 +196,11 @@ export function buildApiModule(
     const syncJobQueue = new Queue('calendar_sync_jobs', { connection: messaging.redis });
     const calendarSyncAgent = new CalendarSyncAgent(calendarProjectionRepo, syncJobQueue);
 
-    // BootSyncCoordinator — reads Google Calendar at startup via CalendarTool
-    bootSyncCoordinator = new BootSyncCoordinator(
+    calendarBootstrapService = new CalendarBootstrapService(
       calendarTool,
       calendarProjectionRepo,
       persistence.taskRepository,
-      timerService,
+      persistence.outboxStore,
       memoryService!
     );
 
@@ -218,5 +219,5 @@ export function buildApiModule(
   }
 
   console.log('[API] Express app wired with controllers and transport guards.');
-  return { app, timerService, sagaDispatcher, consumerRegistry, bootSyncCoordinator };
+  return { app, timerService, sagaDispatcher, consumerRegistry, calendarBootstrapService };
 }

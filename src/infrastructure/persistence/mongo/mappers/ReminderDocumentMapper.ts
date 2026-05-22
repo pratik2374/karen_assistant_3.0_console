@@ -1,6 +1,6 @@
-import { IDocumentMapper, IMongoDocument } from './IDocumentMapper';
-import { ReminderAggregate } from '../../../../domain/reminder/ReminderAggregate';
-import { ReminderState } from '../../../../contracts/StateMachines';
+import { IDocumentMapper, IMongoDocument } from './IDocumentMapper.js';
+import { ReminderAggregate } from '../../../../domain/reminder/ReminderAggregate.js';
+import { ReminderState } from '../../../../contracts/StateMachines.js';
 
 export interface ReminderMongoDocument extends IMongoDocument {
   taskId: string;

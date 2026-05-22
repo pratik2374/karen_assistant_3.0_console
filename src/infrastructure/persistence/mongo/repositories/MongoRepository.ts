@@ -1,8 +1,8 @@
 import { Collection, Db, ClientSession } from 'mongodb';
-import { IRepository } from '../../../../application/ports/IRepository';
-import { AggregateRoot } from '../../../../domain/shared/core/AggregateRoot';
-import { IDocumentMapper, IMongoDocument } from '../mappers/IDocumentMapper';
-import { DomainInvariantError } from '../../../../domain/shared/errors/DomainErrors';
+import { IRepository } from '../../../../application/ports/IRepository.js';
+import { AggregateRoot } from '../../../../domain/shared/core/AggregateRoot.js';
+import { IDocumentMapper, IMongoDocument } from '../mappers/IDocumentMapper.js';
+import { DomainInvariantError } from '../../../../domain/shared/errors/DomainErrors.js';
 
 export abstract class MongoRepository<TAggregate extends AggregateRoot, TDocument extends IMongoDocument> implements IRepository<TAggregate> {
   protected collection: Collection<TDocument>;

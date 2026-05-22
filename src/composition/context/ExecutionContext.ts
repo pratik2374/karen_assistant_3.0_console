@@ -1,4 +1,4 @@
-import { RuntimeConfig } from '../config/RuntimeConfig';
+import { RuntimeConfig } from '../config/RuntimeConfig.js';
 
 export type ExecutionMode = 'PRODUCTION' | 'SANDBOX' | 'REPLAY' | 'DRY_RUN' | 'TEST';
 

@@ -1,5 +1,5 @@
-import { HumanOverridePolicy } from '../../security/HumanOverridePolicy';
-import { CircuitBreaker } from '../../resiliency/CircuitBreaker';
+import { HumanOverridePolicy } from '../../security/HumanOverridePolicy.js';
+import { CircuitBreaker } from '../../resiliency/CircuitBreaker.js';
 
 export interface ToolExecutionContext {
   operationName: string;

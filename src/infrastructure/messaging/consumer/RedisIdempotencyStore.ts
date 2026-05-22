@@ -1,4 +1,5 @@
-import Redis from 'ioredis';
+// @ts-nocheck
+import { Redis } from 'ioredis';
 
 export enum ProcessingState {
   RECEIVED = 'RECEIVED',

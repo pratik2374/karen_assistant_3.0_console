@@ -1,4 +1,4 @@
-import { ITokenEstimator } from '../../../application/ai/governance/ITokenEstimator';
+import { ITokenEstimator } from '../../../application/ai/governance/ITokenEstimator.js';
 import { encoding_for_model, TiktokenModel, Tiktoken } from 'tiktoken';
 
 export class TiktokenEstimator implements ITokenEstimator {

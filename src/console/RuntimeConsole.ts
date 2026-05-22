@@ -99,8 +99,11 @@ async function bootConsole(): Promise<void> {
   }
 
   // ── Execute Boot Synchronization Sequence (Calendar & Vectors) ───────────
-  if (api.bootSyncCoordinator) {
-    await api.bootSyncCoordinator.syncAll();
+  if (api.calendarBootstrapService) {
+    const userId = process.env.WHATSAPP_PHONE_NUMBER_ID || '917439707352';
+    await api.calendarBootstrapService.initialize(userId).catch(err => {
+      console.warn(chalk.yellow(`[RuntimeConsole] CalendarBootstrapService failed to start: ${err.message}`));
+    });
   }
 
   // ── Graceful Shutdown ────────────────────────────────────────────────────

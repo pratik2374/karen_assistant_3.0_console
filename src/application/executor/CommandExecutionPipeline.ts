@@ -1,6 +1,6 @@
-import { IExecutionContext } from '../../composition/context/ExecutionContext';
-import { ICommandExecutor, AsyncCommandResult } from './IExecutor';
-import { ExecutionFailureClassifier, FailureClass } from './ExecutionFailureClassifier';
+import { IExecutionContext } from '../../composition/context/ExecutionContext.js';
+import { ICommandExecutor, AsyncCommandResult } from './IExecutor.js';
+import { ExecutionFailureClassifier, FailureClass } from './ExecutionFailureClassifier.js';
 import { randomUUID } from 'crypto';
 
 // -----------------------------------------------------------------------

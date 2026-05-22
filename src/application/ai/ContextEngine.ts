@@ -1,9 +1,9 @@
-import { IMemoryBlock } from '../../domain/memory/MemoryTiers';
-import { AssembledContext } from '../../domain/memory/ContextProvenance';
-import { ContextAssemblyMode } from './ContextAssemblyModes';
-import { TokenBudgetManager } from './governance/TokenBudgetManager';
-import { DeterministicContextSanitizer, PromptSanitizationPolicy } from '../../infrastructure/ai/security/ContextSanitizer';
-import { ContextObservabilityHook } from '../../infrastructure/observability/metrics/ContextObservabilityHook';
+import { IMemoryBlock } from '../../domain/memory/MemoryTiers.js';
+import { AssembledContext } from '../../domain/memory/ContextProvenance.js';
+import { ContextAssemblyMode } from './ContextAssemblyModes.js';
+import { TokenBudgetManager } from './governance/TokenBudgetManager.js';
+import { DeterministicContextSanitizer, PromptSanitizationPolicy } from '../../infrastructure/ai/security/ContextSanitizer.js';
+import { ContextObservabilityHook } from '../../infrastructure/observability/metrics/ContextObservabilityHook.js';
 
 export interface RetrievalIntent {
   query: string;

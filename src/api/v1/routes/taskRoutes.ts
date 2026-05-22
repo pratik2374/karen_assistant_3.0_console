@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
-import { TaskController } from '../controllers/TaskController';
-import { validateBody } from '../../middleware/validateBody';
-import { idempotencyGuard } from '../../middleware/idempotencyGuard';
-import { CreateTaskRequestDTO } from '../../dtos/TransportDTOs';
+import { TaskController } from '../controllers/TaskController.js';
+import { validateBody } from '../../middleware/validateBody.js';
+import { idempotencyGuard } from '../../middleware/idempotencyGuard.js';
+import { CreateTaskRequestDTO } from '../../dtos/TransportDTOs.js';
 
 export function createTaskRoutes(controller: TaskController): Router {
   const router = Router();

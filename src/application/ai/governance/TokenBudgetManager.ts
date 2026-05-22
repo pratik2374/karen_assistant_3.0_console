@@ -1,7 +1,7 @@
-import { ITokenEstimator } from './ITokenEstimator';
-import { IMemoryBlock, MemoryTier } from '../../../domain/memory/MemoryTiers';
-import { ContextAssemblyMode, ModeConfigs } from '../ContextAssemblyModes';
-import { ContextProvenance, AssembledContextBlock } from '../../../domain/memory/ContextProvenance';
+import { ITokenEstimator } from './ITokenEstimator.js';
+import { IMemoryBlock, MemoryTier } from '../../../domain/memory/MemoryTiers.js';
+import { ContextAssemblyMode, ModeConfigs } from '../ContextAssemblyModes.js';
+import { ContextProvenance, AssembledContextBlock } from '../../../domain/memory/ContextProvenance.js';
 
 export class TokenBudgetManager {
   constructor(private estimator: ITokenEstimator) {}

@@ -1,4 +1,4 @@
-import { AggregateRoot } from '../../domain/shared/core/AggregateRoot';
+import { AggregateRoot } from '../../domain/shared/core/AggregateRoot.js';
 
 export interface IRepository<T extends AggregateRoot> {
   findById(id: string): Promise<T | null>;

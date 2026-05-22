@@ -22,7 +22,9 @@ export class SystemOpsAgent implements IAgent {
     'complete_task',
     'cancel_reminder',
     'remove_reminder',
-    'complete_reminder'
+    'complete_reminder',
+    'snooze_reminder',
+    'acknowledge_reminder'
   ];
 
   constructor(
@@ -245,8 +247,92 @@ export class SystemOpsAgent implements IAgent {
         }
       }
     );
+    const snoozeReminder = FunctionTool.from(
+      async ({ taskId, snoozeMinutes }: { taskId: string; snoozeMinutes: number }) => {
+        try {
+          const snoozeMs = (snoozeMinutes || 15) * 60 * 1000;
+          const newStartTime = new Date(Date.now() + snoozeMs);
 
-    return [queryReminders, queryTasks, querySagas, queryCalendarSync, queryTimers, createReminder, acknowledgeReminder];
+          // Look up the Google Event ID from the projection collection
+          const projection = await db.collection('calendar_event_projection').findOne({
+            internalTaskId: taskId
+          }) as any;
+
+          // Emit Task.Snoozed so SagaDispatcher restarts the CalendarReminderSaga
+          const snoozeEvent = {
+            messageId: randomUUID(),
+            eventType: 'Task.Snoozed',
+            payload: {
+              eventType: 'Task.Snoozed',
+              aggregateId: taskId,
+              payload: {
+                taskId,
+                snoozeMinutes: snoozeMinutes || 15,
+                newStartTime: newStartTime.toISOString(),
+                googleEventId: projection?.googleEventId
+              }
+            },
+            createdAt: new Date(),
+            processedAt: null,
+            idempotencyKey: `snooze-${taskId}-${Date.now()}`,
+            deduplicationKey: `${taskId}:Task.Snoozed:${Date.now()}`,
+            replaySafe: false,
+            sideEffectFree: false,
+            traceId: context.traceId,
+            correlationId: context.correlationId || randomUUID(),
+            causationId: randomUUID()
+          };
+          await this.persistence.outboxStore.saveBulk([snoozeEvent]);
+
+          // Also update Google Calendar event if we have the event ID
+          if (projection?.googleEventId && process.env.COMPOSIO_API_KEY) {
+            try {
+              const { ComposioClient } = await import('../../infrastructure/composio/ComposioClient.js');
+              const composio = new ComposioClient(
+                process.env.COMPOSIO_API_KEY,
+                process.env.COMPOSIO_USER_ID || 'karen'
+              );
+              const endTime = new Date(newStartTime.getTime() + 30 * 60 * 1000);
+              await composio.updateEvent(
+                projection.googleEventId,
+                {
+                  startDateTime: newStartTime.toISOString(),
+                  endDateTime: endTime.toISOString(),
+                  timezone: 'Asia/Kolkata'
+                },
+                context.traceId
+              );
+              // Update projection too
+              await db.collection('calendar_event_projection').updateOne(
+                { internalTaskId: taskId },
+                { $set: { startTime: newStartTime, endTime, lastInternalMutationAt: new Date() } }
+              );
+            } catch (calErr: any) {
+              console.warn(`[SystemOpsAgent] Google Calendar update failed (non-fatal): ${calErr.message}`);
+            }
+          }
+
+          return `Reminder snoozed by ${snoozeMinutes || 15} minutes. New time: ${newStartTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+        } catch (err: any) {
+          return `Error snoozing reminder: ${err.message}`;
+        }
+      },
+      {
+        name: 'snooze_reminder',
+        description: 'Snooze/reschedule a reminder by a given number of minutes. Also updates the Google Calendar event. Provide taskId and snoozeMinutes.',
+        parameters: {
+          type: 'object',
+          properties: {
+            taskId: { type: 'string' },
+            snoozeMinutes: { type: 'number', description: 'Number of minutes to snooze by' }
+          },
+          required: ['taskId', 'snoozeMinutes']
+        }
+      }
+    );
+
+    return [queryReminders, queryTasks, querySagas, queryCalendarSync, queryTimers, createReminder, acknowledgeReminder, snoozeReminder];
+
   }
 
   async execute(context: AgentContext): Promise<AgentExecutionResult> {

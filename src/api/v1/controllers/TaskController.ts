@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
-import { CreateTaskRequestDTO, AsyncCommandResponseDTO } from '../../dtos/TransportDTOs';
-import { HttpErrorMapper } from '../../errors/HttpErrorMapper';
-import { ICommandExecutor } from '../../../application/executor/IExecutor';
-import { CreateTaskCommand, CreateTaskResult } from '../../../application/handlers/TaskCommandHandler';
-import { ExecutionContext } from '../../../composition/context/ExecutionContext';
+import { CreateTaskRequestDTO, AsyncCommandResponseDTO } from '../../dtos/TransportDTOs.js';
+import { HttpErrorMapper } from '../../errors/HttpErrorMapper.js';
+import { ICommandExecutor } from '../../../application/executor/IExecutor.js';
+import { CreateTaskCommand, CreateTaskResult } from '../../../application/handlers/TaskCommandHandler.js';
+import { ExecutionContext } from '../../../composition/context/ExecutionContext.js';
 import { randomUUID } from 'crypto';
 
 // Controller is INTENTIONALLY thin — no domain logic, no repository access.

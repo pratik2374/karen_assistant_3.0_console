@@ -120,7 +120,7 @@ export class GoogleCalendarAdapter extends ToolExecutionGateway implements ICale
         }
       },
       async () => {
-        return { success: true, googleEventId: `simulated-${projection.internalTaskId}` };
+        return { success: true, googleEventId: `simulated-${projection.internalTaskId}`, etag: 'simulated' };
       }
     );
   }
@@ -160,7 +160,7 @@ export class GoogleCalendarAdapter extends ToolExecutionGateway implements ICale
         }
       },
       async () => {
-        return { success: true, googleEventId: projection.googleEventId };
+        return { success: true, googleEventId: projection.googleEventId, etag: 'simulated' };
       }
     );
   }

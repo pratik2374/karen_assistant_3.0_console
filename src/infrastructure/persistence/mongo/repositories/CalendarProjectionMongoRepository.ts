@@ -16,6 +16,17 @@ export class CalendarProjectionMongoRepository {
     return this.collection.findOne({ googleEventId });
   }
 
+  async findByTitleAndStartTime(title: string, startTime: Date): Promise<CalendarEventProjection | null> {
+    return this.collection.findOne({ title, startTime });
+  }
+
+  async updateGoogleEventId(internalTaskId: string, googleEventId: string): Promise<void> {
+    await this.collection.updateOne(
+      { internalTaskId },
+      { $set: { googleEventId, syncState: CalendarSyncState.SYNCED, lastExternalSyncAt: new Date() } }
+    );
+  }
+
   async save(projection: CalendarEventProjection): Promise<void> {
     await this.collection.updateOne(
       { internalTaskId: projection.internalTaskId },

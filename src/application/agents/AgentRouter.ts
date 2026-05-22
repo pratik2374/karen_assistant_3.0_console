@@ -65,7 +65,7 @@ export class AgentRouter {
       },
       {
         name: 'route_to_system_ops',
-        description: 'Route the request to the SystemOpsAgent. Use this for ANY reminders, tasks, timers, sagas, or internal system queries.',
+        description: 'Route the request to the SystemOpsAgent. Use this for: reminders, tasks, timers, sagas, internal system queries, completing/cancelling a reminder, snoozing a reminder, user saying "started" or "I started" or "snooze X minutes" or "do it after X minutes".',
         parameters: { type: 'object', properties: {} }
       }
     );

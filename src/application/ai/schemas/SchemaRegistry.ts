@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AIProposalSchema } from '../../commands/CommandStandard';
+import { AIProposalSchema } from '../../commands/CommandStandard.js';
 
 // Wrap union in a root object to bypass OpenAI's root-level union constraint
 export const AIProposalRootSchema = z.object({

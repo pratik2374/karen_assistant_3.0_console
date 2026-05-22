@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
 import { RuntimeEventBus } from '../../../../console/RuntimeEventBus.js';

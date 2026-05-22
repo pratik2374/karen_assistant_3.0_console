@@ -1,5 +1,5 @@
-import { IStructuredLogger, StructuredLogEntry, ExecutionMode, LogLevel } from './IStructuredLogger';
-import { TelemetryBackpressure } from '../telemetry/TelemetryBackpressure';
+import { IStructuredLogger, StructuredLogEntry, ExecutionMode, LogLevel } from './IStructuredLogger.js';
+import { TelemetryBackpressure } from '../telemetry/TelemetryBackpressure.js';
 
 export class ConsoleStructuredLogger implements IStructuredLogger {
   private backpressure = new TelemetryBackpressure({ maxEventsPerSecond: 500, sampleRateIfThrottled: 0.01 });

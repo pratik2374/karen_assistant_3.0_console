@@ -1,6 +1,6 @@
-import { ITimerStore, TimerRecord } from '../../application/ports/ITimerStore';
+import { ITimerStore, TimerRecord } from '../../application/ports/ITimerStore.js';
 import { Queue } from 'bullmq';
-import { clock } from '../../domain/shared/temporal/SystemClock';
+import { clock } from '../../domain/shared/temporal/SystemClock.js';
 
 export class HybridTimerService {
   constructor(

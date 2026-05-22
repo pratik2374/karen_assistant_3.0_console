@@ -1,4 +1,4 @@
-import { clock } from './SystemClock';
+import { clock } from './SystemClock.js';
 
 export interface TemporalPolicy {
   timezone: string;
@@ -8,34 +8,109 @@ export interface TemporalPolicy {
 
 export class TemporalPolicyEngine {
   
+  private static getTimezoneOffset(date: Date, timeZone: string): number {
+    const tzParts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false
+    }).formatToParts(date);
+
+    const utcParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false
+    }).formatToParts(date);
+
+    const getPartVal = (parts: Intl.DateTimeFormatPart[], type: string) => 
+      parseInt(parts.find(p => p.type === type)!.value, 10);
+
+    const tzYear = getPartVal(tzParts, 'year');
+    const tzMonth = getPartVal(tzParts, 'month');
+    const tzDay = getPartVal(tzParts, 'day');
+    const rawTzHour = getPartVal(tzParts, 'hour');
+    const tzHour = rawTzHour === 24 ? 0 : rawTzHour;
+    const tzMin = getPartVal(tzParts, 'minute');
+    const tzSec = getPartVal(tzParts, 'second');
+
+    const utcYear = getPartVal(utcParts, 'year');
+    const utcMonth = getPartVal(utcParts, 'month');
+    const utcDay = getPartVal(utcParts, 'day');
+    const rawUtcHour = getPartVal(utcParts, 'hour');
+    const utcHour = rawUtcHour === 24 ? 0 : rawUtcHour;
+    const utcMin = getPartVal(utcParts, 'minute');
+    const utcSec = getPartVal(utcParts, 'second');
+
+    const tzTime = Date.UTC(tzYear, tzMonth - 1, tzDay, tzHour, tzMin, tzSec);
+    const utcTime = Date.UTC(utcYear, utcMonth - 1, utcDay, utcHour, utcMin, utcSec);
+
+    return tzTime - utcTime;
+  }
+
   // Proactively calculates the next valid execution time
   // If the target time falls within DND, it defers to the END of the DND window.
   public static calculateSafeWakeTime(targetUtcTime: Date, policy: TemporalPolicy): Date {
-    // For MVP, we will use a naive approach assuming simple UTC bounds.
-    // In production, you would use a library like luxon or date-fns-tz to convert targetUtcTime 
-    // to the local timezone, check the local hour against DND bounds, and then convert back to UTC.
+    const date = new Date(targetUtcTime.getTime());
     
-    // Simplistic simulation of DND logic for architecture validation:
-    // If target UTC hour + offset falls in DND, push forward.
-    const target = new Date(targetUtcTime.getTime());
-    
-    // We assume timezone offset is 0 for this naive implementation, 
-    // but the engine explicitly encapsulates this complex temporal logic.
-    const localHour = target.getUTCHours(); 
-    
-    const isDnd = localHour >= policy.dndStartHour || localHour < policy.dndEndHour;
-    
-    if (isDnd) {
-      // Defer to DND End Hour
-      if (localHour >= policy.dndStartHour) {
-        // Next day at end hour
-        target.setUTCDate(target.getUTCDate() + 1);
-      }
-      target.setUTCHours(policy.dndEndHour, 0, 0, 0);
-      return target;
+    // 1. Get local timezone components
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: policy.timezone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false
+    }).formatToParts(date);
+
+    const getPartVal = (p: Intl.DateTimeFormatPart[], type: string) => 
+      parseInt(p.find(item => item.type === type)!.value, 10);
+
+    const localYear = getPartVal(parts, 'year');
+    const localMonth = getPartVal(parts, 'month');
+    const localDay = getPartVal(parts, 'day');
+    const rawLocalHour = getPartVal(parts, 'hour');
+    const localHour = rawLocalHour === 24 ? 0 : rawLocalHour;
+
+    // 2. Check if in DND
+    let isDnd = false;
+    if (policy.dndStartHour > policy.dndEndHour) {
+      isDnd = localHour >= policy.dndStartHour || localHour < policy.dndEndHour;
+    } else {
+      isDnd = localHour >= policy.dndStartHour && localHour < policy.dndEndHour;
     }
 
-    return target;
+    if (isDnd) {
+      // Defer to DND End Hour
+      let targetLocalDay = localDay;
+      let targetLocalMonth = localMonth;
+      let targetLocalYear = localYear;
+
+      if (localHour >= policy.dndStartHour) {
+        // Pushing to next local day
+        const tempDate = new Date(Date.UTC(localYear, localMonth - 1, localDay + 1));
+        targetLocalYear = tempDate.getUTCFullYear();
+        targetLocalMonth = tempDate.getUTCMonth() + 1;
+        targetLocalDay = tempDate.getUTCDate();
+      }
+
+      const approxLocalTime = Date.UTC(targetLocalYear, targetLocalMonth - 1, targetLocalDay, policy.dndEndHour, 0, 0, 0);
+      const approxDate = new Date(approxLocalTime);
+      const offset = this.getTimezoneOffset(approxDate, policy.timezone);
+      return new Date(approxLocalTime - offset);
+    }
+
+    return date;
   }
 
   // Calculates a delay based on the current system clock

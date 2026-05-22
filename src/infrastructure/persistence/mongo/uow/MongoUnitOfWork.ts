@@ -1,5 +1,5 @@
 import { ClientSession, Db, MongoClient } from 'mongodb';
-import { IUnitOfWork } from '../../../../application/ports/IUnitOfWork';
+import { IUnitOfWork } from '../../../../application/ports/IUnitOfWork.js';
 
 export class MongoUnitOfWork implements IUnitOfWork {
   private session: ClientSession | null = null;

@@ -121,8 +121,8 @@ export class ReminderEscalationSaga extends SagaBase<ReminderEscalationState> {
     const targetTime = new Date(clock.now().getTime() + offsetMs);
     const policy: TemporalPolicy = {
       timezone: this.data.userTimezone,
-      dndStartHour: 24, // Disabled temporarily for late-night testing
-      dndEndHour: 8
+      dndStartHour: 0, // Disabled
+      dndEndHour: 0
     };
     
     // Proactive DND forward calculation

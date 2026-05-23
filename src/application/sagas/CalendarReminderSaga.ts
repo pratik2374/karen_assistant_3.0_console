@@ -139,8 +139,8 @@ export class CalendarReminderSaga extends SagaBase<CalendarReminderState> {
 
     const policy: TemporalPolicy = {
       timezone: this.data.userTimezone,
-      dndStartHour: 24, // Disabled temporarily for late-night testing
-      dndEndHour: 8
+      dndStartHour: 0, // Disabled
+      dndEndHour: 0
     };
     const safeWakeTime = TemporalPolicyEngine.calculateSafeWakeTime(targetTime, policy);
 

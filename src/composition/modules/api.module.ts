@@ -138,6 +138,7 @@ export function buildApiModule(
   let calendarReconciliationWorker: CalendarReconciliationWorker | undefined;
   
   let calendarBootstrapService: CalendarBootstrapService | undefined;
+  let dailyReportService: any | undefined;
   let agentRouter: AgentRouter | undefined;
 
   if (persistence) {
@@ -215,9 +216,21 @@ export function buildApiModule(
       calendarSyncAgent
     );
 
+    const { DailyReportService } = await import('../../console/DailyReportService.js');
+    const { Worker } = await import('bullmq');
+    const dailyReportQueue = new Queue('daily_report_queue', { connection: messaging.redis });
+    dailyReportService = new DailyReportService(persistence.db!, whatsappAdapter, dailyReportQueue);
+    
+    const dailyReportWorker = new Worker('daily_report_queue', async job => {
+      if (job.name === 'deliver_daily_report') {
+        const { userId, reportText } = job.data;
+        await whatsappAdapter.sendMessage({ to: userId, body: reportText, idempotencyKey: job.id }, false, false);
+      }
+    }, { connection: messaging.redis });
+
     console.log('[API] Orchestration, Sagas, Timers, and BullMQ consumer singletons wired.');
   }
 
   console.log('[API] Express app wired with controllers and transport guards.');
-  return { app, timerService, sagaDispatcher, consumerRegistry, calendarBootstrapService };
+  return { app, timerService, sagaDispatcher, consumerRegistry, calendarBootstrapService, dailyReportService };
 }

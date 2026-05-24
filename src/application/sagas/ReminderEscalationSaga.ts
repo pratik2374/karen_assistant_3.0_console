@@ -68,10 +68,16 @@ export class ReminderEscalationSaga extends SagaBase<ReminderEscalationState> {
   ): Promise<void> {
     this.data.escalationCount++;
 
-    // For a simple, standard reminder system: once the reminder triggers and executes,
-    // it is complete. We transition to 'COMPLETED' and mark it completed.
-    this.transition('COMPLETED');
-    this.markAsCompleted();
+    if (this.data.escalationCount === 1) {
+      this.transition('WAITING_ACK_2');
+      await this.scheduleNextWakeup(timerService, 10 * 60 * 1000, context.executionMode === 'REPLAY');
+    } else if (this.data.escalationCount === 2) {
+      this.transition('ESCALATED');
+      await this.scheduleNextWakeup(timerService, 5 * 60 * 1000, context.executionMode === 'REPLAY');
+    } else {
+      this.transition('COMPLETED');
+      this.markAsCompleted();
+    }
 
     // Emit the command to the Aggregate to actually mutate state and send the physical reminder
     if (context.executionMode !== 'REPLAY') {

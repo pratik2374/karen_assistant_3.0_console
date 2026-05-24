@@ -98,6 +98,15 @@ export async function bootstrap(): Promise<void> {
       } catch (err: any) {
         console.warn(`[BOOTSTRAP] CalendarBootstrapService failed to start (non-fatal): ${err.message}`);
       }
+      
+      try {
+        if (api.dailyReportService) {
+          const userId = process.env.WHATSAPP_MY_PHONE_NUMBER || '917439707352';
+          api.dailyReportService.start(userId);
+        }
+      } catch (err: any) {
+        console.warn(`[BOOTSTRAP] DailyReportService failed to start: ${err.message}`);
+      }
     }
   });
 }

@@ -157,12 +157,16 @@ export class BullMQConsumerRegistry {
               const userId = sagaSnapshot?.payloadData?.userId || '917439707352';
               const taskTitle = sagaSnapshot?.payloadData?.taskTitle || 'Reminder';
 
-              const wakePhrases = [
-                `"Hey! Just a quick heads-up, it's time for: *${taskTitle}*."`,
-                `"Pardon the interruption, but you asked me to remind you to: *${taskTitle}*."`,
-                `"Time to get moving! It's time for: *${taskTitle}*."`
-              ];
-              const text = `🎙️ *Karen Alert*\n\n${wakePhrases[Math.floor(Math.random() * wakePhrases.length)]}`;
+              const escalationCount = event.payload.escalationCount || 1;
+              let text = '';
+              
+              if (escalationCount === 1) {
+                text = `🎙️ *Karen Alert*\n\nHey! Just a quick heads-up, it's time for: *${taskTitle}*.`;
+              } else if (escalationCount === 2) {
+                text = `🎙️ *Karen Alert*\n\nI'm back! Just checking if you started: *${taskTitle}*. No pressure, but just a friendly nudge.`;
+              } else {
+                text = `🎙️ *Karen Alert*\n\nFinal reminder for: *${taskTitle}*! Time to get moving!`;
+              }
 
               RuntimeEventBus.log('REMINDER_OUTBOUND', 'OUTBOUND',
                 `Delivering WhatsApp reminder to ${userId}: "${taskTitle}"`,

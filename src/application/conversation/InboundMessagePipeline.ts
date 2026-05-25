@@ -217,6 +217,7 @@ export class InboundMessagePipeline {
 
     // Fetch user's active tasks/reminders from MongoDB to inject as context!
     let memories: any[] = [];
+    let conversationHistoryContext = '';
     if (this.persistence && this.persistence.db) {
       try {
         const docs = await this.persistence.db.collection('saga_states')
@@ -246,6 +247,7 @@ export class InboundMessagePipeline {
     if (this.memoryService) {
       try {
         const memoryString = await this.memoryService.getCompleteContextString(userId);
+        conversationHistoryContext = memoryString;
         memories.push({
           memoryId: 'daily-chat-memory-layer',
           content: memoryString,
@@ -370,7 +372,8 @@ export class InboundMessagePipeline {
                 payload: {
                   ...payloadObj,
                   userQuery: maskedMessageText,
-                  query: maskedMessageText
+                  query: maskedMessageText,
+                  conversationContext: conversationHistoryContext
                 },
                 userId,
                 traceId,

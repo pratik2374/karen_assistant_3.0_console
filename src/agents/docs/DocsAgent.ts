@@ -191,14 +191,41 @@ export class DocsAgent implements IAgent {
             throw new Error('REMOVE_BG_API_KEY is missing from your environment variables.');
           }
 
-          // 1. Download source image from target URL
-          RuntimeEventBus.log('DOCS_AGENT_TOOL', 'SYSTEM', `Downloading source image from URL`, context.traceId);
-          const dlRes = await fetch(realUrl);
-          if (!dlRes.ok) {
-            throw new Error(`Failed to download source image from URL: HTTP ${dlRes.status}`);
+          const clientId = process.env.GOOGLE_CLIENT_ID;
+          const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+          const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+          const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+          if (!clientId || !clientSecret || !refreshToken) {
+            throw new Error('Google OAuth credentials are missing from your .env file!');
           }
-          const imageArrayBuffer = await dlRes.arrayBuffer();
-          const imageBuffer = Buffer.from(imageArrayBuffer);
+
+          // 1. Download source image
+          let imageBuffer: Buffer;
+          const driveIdMatch = realUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+          
+          if (driveIdMatch) {
+            const fileId = driveIdMatch[1];
+            RuntimeEventBus.log('DOCS_AGENT_TOOL', 'SYSTEM', `Downloading source image directly from Google Drive API. File ID: ${fileId}`, context.traceId);
+            
+            const { google } = await import('googleapis');
+            const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost:3000');
+            oauth2Client.setCredentials({ refresh_token: refreshToken });
+            const drive = google.drive({ version: 'v3', auth: oauth2Client });
+            
+            const driveRes = await drive.files.get(
+              { fileId, alt: 'media' },
+              { responseType: 'arraybuffer' }
+            );
+            imageBuffer = Buffer.from(driveRes.data as ArrayBuffer);
+          } else {
+            RuntimeEventBus.log('DOCS_AGENT_TOOL', 'SYSTEM', `Downloading source image from external URL: ${realUrl}`, context.traceId);
+            const dlRes = await fetch(realUrl);
+            if (!dlRes.ok) {
+              throw new Error(`Failed to download source image from URL: HTTP ${dlRes.status}`);
+            }
+            imageBuffer = Buffer.from(await dlRes.arrayBuffer());
+          }
 
           // 2. Call remove.bg API
           RuntimeEventBus.log('DOCS_AGENT_TOOL', 'SYSTEM', `Calling remove.bg API to process image`, context.traceId);
@@ -231,15 +258,6 @@ export class DocsAgent implements IAgent {
           const mimeType = ext === 'zip' ? 'application/zip' : `image/${ext}`;
           
           const { google } = await import('googleapis');
-          const clientId = process.env.GOOGLE_CLIENT_ID;
-          const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-          const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-          const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-          if (!clientId || !clientSecret || !refreshToken) {
-            throw new Error('Google OAuth credentials are missing from your .env file!');
-          }
-
           const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost:3000');
           oauth2Client.setCredentials({ refresh_token: refreshToken });
           const drive = google.drive({ version: 'v3', auth: oauth2Client });
@@ -346,11 +364,14 @@ export class DocsAgent implements IAgent {
       });
 
       const userQuery = context.payload?.userQuery || context.payload?.query || context.intent || '';
+      const conversationContext = context.payload?.conversationContext || '';
 
       const query = `
 You are the Karen Secure Document Vault Agent.
 Your job is to manage the user's personal documents (such as Aadhar, PAN, Passports, etc.) in the secure vault.
 You have access to tools to list all documents, search documents, store/update a document, delete a document, and remove image backgrounds.
+
+${conversationContext ? `Here is the recent context of this conversation to help resolve pronouns like "it", "that", "hairstyle", etc.:\n${conversationContext}\n` : ''}
 
 CRITICAL PRIVACY RULE:
 - Document links are 100% hidden from you. The database tools will only return document metadata (ID, name, and aliases) and will never return the raw link.

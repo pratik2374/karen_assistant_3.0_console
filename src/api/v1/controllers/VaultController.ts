@@ -688,7 +688,7 @@ export class VaultController {
 
   async function fetchDocs() {
     try {
-      const res = await fetch('/vault/api', { credentials: 'same-origin' });
+      const res = await fetch('/vault/api?_t=' + Date.now(), { credentials: 'same-origin' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       allDocs = await res.json();
       updateStats();
@@ -727,7 +727,7 @@ export class VaultController {
     btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="animation:spin 0.8s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Saving…';
 
     try {
-      const res = await fetch('/vault/api', {
+      const res = await fetch('/vault/api?_t=' + Date.now(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
@@ -803,6 +803,9 @@ export class VaultController {
   }
 
   private async getDocuments(_req: Request, res: Response) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     try {
       const docs = await this.vaultRepo.findAll();
       res.json(docs);

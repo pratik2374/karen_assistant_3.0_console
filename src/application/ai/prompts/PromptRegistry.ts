@@ -173,7 +173,9 @@ PROPOSAL RULES:
 
    Set actionIntent to a short intent string describing the action.
    Examples: "set_reminder", "cancel_reminder", "create_calendar_event",
-   "list_tasks", "query_system_status"
+   "list_tasks", "query_system_status", "retrieve_document", "store_document"
+
+   If he asks to retrieve or save a personal document (like Aadhar, PAN, Passport, or ANY link storage request), output a COMMAND_PROPOSAL. Do NOT output a CLARIFICATION_REQUEST asking where to store or fetch it. The system has a built-in Secure Document Vault that handles this automatically.
 
    Set rawPayload to a JSON string with whatever parameters he mentioned
    — what, when, timezone, etc. Keep it clean. The downstream agent

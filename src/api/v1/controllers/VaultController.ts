@@ -97,35 +97,64 @@ export class VaultController {
 
       <script>
         async function fetchDocs() {
-          const res = await fetch('/vault/api');
-          const docs = await res.json();
-          const tbody = document.getElementById('docTableBody');
-          tbody.innerHTML = docs.map(doc => \`
-            <tr>
-              <td><strong>\${doc.name}</strong></td>
-              <td><a href="\${doc.link}" target="_blank">View Document</a></td>
-              <td><button class="danger" onclick="deleteDoc('\${doc.docId}')">Delete</button></td>
-            </tr>
-          \`).join('');
+          try {
+            const res = await fetch('/vault/api');
+            if (!res.ok) throw new Error('Failed to fetch');
+            const docs = await res.json();
+            const tbody = document.getElementById('docTableBody');
+            tbody.innerHTML = docs.map(doc => \`
+              <tr>
+                <td><strong>\${doc.name}</strong></td>
+                <td><a href="\${doc.link}" target="_blank">View Document</a></td>
+                <td><button class="danger" onclick="deleteDoc('\${doc.docId}')">Delete</button></td>
+              </tr>
+            \`).join('');
+          } catch (err) {
+            console.error(err);
+          }
         }
 
         document.getElementById('addForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = document.getElementById('docName').value;
           const link = document.getElementById('docLink').value;
-          await fetch('/vault/api', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, link })
-          });
-          document.getElementById('addForm').reset();
-          fetchDocs();
+          const btn = e.target.querySelector('button');
+          btn.disabled = true;
+          btn.innerText = 'Saving...';
+          
+          try {
+            const res = await fetch('/vault/api', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, link })
+            });
+            if (res.ok) {
+              alert('Document saved securely!');
+              document.getElementById('addForm').reset();
+              await fetchDocs();
+            } else {
+              alert('Failed to save document. Check console.');
+            }
+          } catch (err) {
+            alert('Error saving document.');
+          } finally {
+            btn.disabled = false;
+            btn.innerText = '+ Save to Vault';
+          }
         });
 
         async function deleteDoc(id) {
           if(confirm('Are you sure you want to delete this document?')) {
-            await fetch(\`/vault/api/\${id}\`, { method: 'DELETE' });
-            fetchDocs();
+            try {
+              const res = await fetch(\`/vault/api/\${id}\`, { method: 'DELETE' });
+              if (res.ok) {
+                await fetchDocs();
+              } else {
+                alert('Failed to delete.');
+              }
+            } catch (err) {
+              alert('Error deleting.');
+            }
           }
         }
 

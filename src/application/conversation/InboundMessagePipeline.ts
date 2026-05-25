@@ -46,10 +46,13 @@ export class InboundMessagePipeline {
     );
 
     const db = this.persistence?.db;
+    const urlMasks: Record<string, string> = {};
+    let finalQueryText = messageText || '';
 
     // A. INCOMING STAGED MEDIA REPLY CORRELATION
     if (parentMessageId && db) {
-      const staged = await db.collection('staged_media').findOne({ mediaId: parentMessageId });
+      // FIX QUERY: search by messageId, NOT mediaId
+      const staged = await db.collection('staged_media').findOne({ messageId: parentMessageId });
       if (staged) {
         RuntimeEventBus.log('PIPELINE_REPLY_MATCH', 'TRANSPORT', `Incoming message correlates to staged media ID: ${staged.mediaId} | Status: ${staged.status}`, traceId);
 
@@ -92,7 +95,7 @@ export class InboundMessagePipeline {
       }
     }
 
-    // B. MEDIA INGRESS STAGING FLOW
+    // B. MEDIA INGRESS STAGING / CAPTION FLOW
     if (mediaDetails && db) {
       try {
         const { buffer, mimeType } = await this.downloadWhatsAppMedia(mediaDetails.mediaId, traceId);
@@ -104,42 +107,49 @@ export class InboundMessagePipeline {
           traceId
         );
 
-        const stagedRecord = {
-          mediaId: mediaDetails.mediaId,
-          userId,
-          messageId,
-          type: mediaDetails.type,
-          mimeType,
-          filename: mediaDetails.filename,
-          driveFileId: fileId,
-          driveLink: viewLink,
-          status: 'PENDING',
-          createdAt: new Date()
-        };
-        await db.collection('staged_media').insertOne(stagedRecord);
-
-        const timerService = this.timerService || (this as any).timerService;
-        if (timerService) {
-          const timerId = randomUUID();
-          await timerService.schedule({
-            timerId,
-            sagaId: mediaDetails.mediaId,
-            sagaType: 'StagedMediaCleanup',
-            actionIntent: 'TEMP_MEDIA_CLEANUP',
-            payload: { type: 'STAGED_MEDIA', driveFileId: fileId, mediaId: mediaDetails.mediaId },
-            targetWakeTime: new Date(Date.now() + 10 * 60 * 1000),
+        if (!messageText || messageText.trim() === '') {
+          // Standard temporary staging (Scenario 1)
+          const stagedRecord = {
+            mediaId: mediaDetails.mediaId,
+            userId,
+            messageId,
+            type: mediaDetails.type,
+            mimeType,
+            filename: mediaDetails.filename,
+            driveFileId: fileId,
+            driveLink: viewLink,
             status: 'PENDING',
-            traceId,
-            correlationId: randomUUID()
-          });
-          RuntimeEventBus.log('PIPELINE_MEDIA_TIMER_SCHEDULED', 'TRANSPORT', `Temporary staging 10-minute cleanup timer scheduled. ID: ${timerId}`, traceId);
-        } else {
-          console.warn('[InboundPipeline] HybridTimerService not found. Cleanup timer skipped.');
-        }
+            createdAt: new Date()
+          };
+          await db.collection('staged_media').insertOne(stagedRecord);
 
-        const mediaWord = mediaDetails.type === 'image' ? 'image' : 'file';
-        await this.sendReply(userId, `Sir, what should I do with this ${mediaWord}? After 10 minutes I will delete it.`, messageId);
-        return;
+          const timerService = this.timerService || (this as any).timerService;
+          if (timerService) {
+            const timerId = randomUUID();
+            await timerService.schedule({
+              timerId,
+              sagaId: mediaDetails.mediaId,
+              sagaType: 'StagedMediaCleanup',
+              actionIntent: 'TEMP_MEDIA_CLEANUP',
+              payload: { type: 'STAGED_MEDIA', driveFileId: fileId, mediaId: mediaDetails.mediaId },
+              targetWakeTime: new Date(Date.now() + 10 * 60 * 1000),
+              status: 'PENDING',
+              traceId,
+              correlationId: randomUUID()
+            });
+            RuntimeEventBus.log('PIPELINE_MEDIA_TIMER_SCHEDULED', 'TRANSPORT', `Temporary staging 10-minute cleanup timer scheduled. ID: ${timerId}`, traceId);
+          }
+
+          const mediaWord = mediaDetails.type === 'image' ? 'image' : 'file';
+          await this.sendReply(userId, `Sir, what should I do with this ${mediaWord}? After 10 minutes I will delete it.`, messageId);
+          return;
+        } else {
+          // Direct permanent store via caption fast-track!
+          const maskKey = `{{MASKED_URL_99}}`;
+          urlMasks[maskKey] = viewLink;
+          finalQueryText = `${messageText} ${maskKey}`;
+          RuntimeEventBus.log('PIPELINE_CAPTION_FAST_TRACK', 'TRANSPORT', `Fast-tracking caption flow with temporary Drive URL: ${viewLink}`, traceId);
+        }
       } catch (err: any) {
         console.error('[InboundPipeline] Media staging flow failed:', err);
         await this.sendReply(userId, `Failed to stage attachment: ${err.message}`, messageId);
@@ -148,8 +158,7 @@ export class InboundMessagePipeline {
     }
 
     // ZERO-LLM INBOUND URL MASKING
-    const urlMasks: Record<string, string> = {};
-    let maskedMessageText = messageText;
+    let maskedMessageText = finalQueryText;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     let matchCount = 0;
     maskedMessageText = maskedMessageText.replace(urlRegex, (match) => {

@@ -9,20 +9,11 @@ import { TaskAggregate } from '../domain/task/TaskAggregate.js';
 import { TimeContext } from '../domain/shared/value-objects/TimeContext.js';
 import { randomUUID } from 'crypto';
 import { RuntimeEventBus } from './RuntimeEventBus.js';
+import { google } from 'googleapis';
 import chalk from 'chalk';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CalendarBootstrapService
-//
-// Responsibilities:
-//  1. On startup: fetch TODAY's Google Calendar events, create Tasks + sagas
-//     for any event that doesn't already have one (idempotent).
-//  2. Every 15 minutes: poll for new events added during the day.
-//  3. At 12:01 AM midnight every night: fetch next day's events automatically.
-//
-// Detection of already-scheduled events: checks `calendar_event_projection`
-// for existing googleEventId. If found → skip. Otherwise → create Task +
-// emit Task.Created with sourceType='calendar_sync'.
+// CalendarBootstrapService — 100% Native Google Calendar Sync (Composio-Free)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class CalendarBootstrapService {
@@ -92,26 +83,38 @@ export class CalendarBootstrapService {
     }
   }
 
-  /** Fetch and sync all events for a given calendar day. Idempotent. */
+  /** Fetch and sync all events for a given calendar day natively. Idempotent. */
   public async syncDay(userId: string, date: Date): Promise<number> {
     const dayStart = new Date(date);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(date);
     dayEnd.setHours(23, 59, 59, 999);
 
-    const toolResult = await this.calendarTool.listEvents({
-      userId: 'karen',
-      payload: {},
-      traceId: randomUUID(),
-      correlationId: randomUUID(),
-      isReplay: false,
-      isSandbox: !process.env.COMPOSIO_API_KEY,
-      idempotencyKey: `day-sync-${dayStart.toDateString()}`,
-      timeMin: dayStart,
-      timeMax: dayEnd,
+    // Initialize Google OAuth2 natively
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      console.warn('[CalendarBootstrap] Missing Google credentials. Cannot sync day.');
+      return 0;
+    }
+
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost:3000');
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const calendarClient = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    // Fetch calendar list natively
+    const listResponse = await calendarClient.events.list({
+      calendarId: calendarId,
+      timeMin: dayStart.toISOString(),
+      timeMax: dayEnd.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
     });
 
-    const events = toolResult.success ? (toolResult.data ?? []) : [];
+    const events = listResponse.data.items || [];
     let createdCount = 0;
 
     for (const evt of events) {
@@ -126,7 +129,6 @@ export class CalendarBootstrapService {
         }
       }
 
-      // Try to resolve collisions for manually created tasks
       // Try to resolve collisions for manually created tasks
       const eventStart = new Date(evt.start.dateTime || evt.start.date || new Date().toISOString());
       const collision = await this.projectionRepo.findByTitleAndStartTime(evt.summary || 'Untitled', eventStart);

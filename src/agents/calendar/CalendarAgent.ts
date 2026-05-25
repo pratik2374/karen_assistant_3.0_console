@@ -34,6 +34,11 @@ export class CalendarAgent implements IAgent {
       context.traceId
     );
 
+    // Track dynamic tool mutations during LLM agent execution
+    let wasMutated = false;
+    let mutationType = ''; // 'create' | 'update' | 'delete'
+    let createdEventData: any = null;
+
     try {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -53,6 +58,23 @@ export class CalendarAgent implements IAgent {
       const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost:3000');
       oauth2Client.setCredentials({ refresh_token: refreshToken });
       const calendarClient = google.calendar({ version: 'v3', auth: oauth2Client });
+
+      // Helper to format ISO strings to RFC3339 compliant strings with timezone offsets
+      const makeRFC3339 = (dateStr: string, isEnd = false): string => {
+        if (!dateStr) return dateStr;
+        // If already has timezone offset or 'Z', return as-is
+        if (dateStr.includes('Z') || dateStr.includes('+') || /[-+]\d{2}:\d{2}$/.test(dateStr)) {
+          return new Date(dateStr).toISOString();
+        }
+        // If it's a date only (e.g. YYYY-MM-DD), append time and offset
+        if (!dateStr.includes('T')) {
+          return isEnd 
+            ? `${dateStr}T23:59:59+05:30` 
+            : `${dateStr}T00:00:00+05:30`;
+        }
+        // Append local Asia/Kolkata offset (+05:30)
+        return `${dateStr}+05:30`;
+      };
 
       // Define native tools for LlamaIndex
 
@@ -84,7 +106,7 @@ export class CalendarAgent implements IAgent {
         },
         {
           name: 'fetch_calendar_events_today',
-          description: "Get a list of all calendar events scheduled for today in the user's Google Calendar.",
+          description: "Fetch ALL scheduled events for today in the user's calendar. Use this tool directly whenever the user asks for today's events, today's schedule, or what is happening today.",
           parameters: { type: 'object', properties: {} }
         }
       );
@@ -92,11 +114,31 @@ export class CalendarAgent implements IAgent {
       const searchEventsTool = FunctionTool.from(
         async (args: { query?: string; timeMin?: string; timeMax?: string }) => {
           RuntimeEventBus.log('CALENDAR_AGENT_TOOL', 'SYSTEM', `Searching calendar events (query="${args.query || ''}", timeMin="${args.timeMin || ''}", timeMax="${args.timeMax || ''}")`, context.traceId);
+          
+          let parsedMin: string | undefined = undefined;
+          let parsedMax: string | undefined = undefined;
+
+          if (args.timeMin) {
+            try {
+              parsedMin = makeRFC3339(args.timeMin, false);
+            } catch (e) {
+              parsedMin = args.timeMin;
+            }
+          }
+
+          if (args.timeMax) {
+            try {
+              parsedMax = makeRFC3339(args.timeMax, true);
+            } catch (e) {
+              parsedMax = args.timeMax;
+            }
+          }
+
           const response = await calendarClient.events.list({
             calendarId: calendarId,
             q: args.query,
-            timeMin: args.timeMin,
-            timeMax: args.timeMax,
+            timeMin: parsedMin,
+            timeMax: parsedMax,
             singleEvents: true,
           });
 
@@ -112,13 +154,13 @@ export class CalendarAgent implements IAgent {
         },
         {
           name: 'find_calendar_events_by_timeline',
-          description: 'Search for calendar events using a keyword query or specific start/end ISO datetime limits.',
+          description: 'Search for calendar events using a text query or a timeline range (like this week, this month, or a custom range). timeMin and timeMax must be in local format (YYYY-MM-DDTHH:mm:ss) and the tool will handle formatting offsets automatically.',
           parameters: {
             type: 'object',
             properties: {
               query: { type: 'string', description: 'Keyword to search for in event titles/descriptions.' },
-              timeMin: { type: 'string', description: 'ISO 8601 start time limit, e.g. YYYY-MM-DDTHH:mm:ss' },
-              timeMax: { type: 'string', description: 'ISO 8601 end time limit, e.g. YYYY-MM-DDTHH:mm:ss' }
+              timeMin: { type: 'string', description: 'ISO start date or time (format YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss).' },
+              timeMax: { type: 'string', description: 'ISO end date or time (format YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss).' }
             }
           }
         }
@@ -127,16 +169,21 @@ export class CalendarAgent implements IAgent {
       const createEventTool = FunctionTool.from(
         async (args: { summary: string; description?: string; startTime: string; endTime: string; location?: string }) => {
           RuntimeEventBus.log('CALENDAR_AGENT_TOOL', 'SYSTEM', `Creating calendar event: "${args.summary}"`, context.traceId);
+          
+          // Format start and end properly to guarantee API accepts it
+          const formattedStart = makeRFC3339(args.startTime, false);
+          const formattedEnd = makeRFC3339(args.endTime, true);
+
           const eventBody = {
             summary: args.summary,
             description: args.description,
             location: args.location,
             start: {
-              dateTime: args.startTime,
+              dateTime: formattedStart,
               timeZone: 'Asia/Kolkata',
             },
             end: {
-              dateTime: args.endTime,
+              dateTime: formattedEnd,
               timeZone: 'Asia/Kolkata',
             },
           };
@@ -145,6 +192,15 @@ export class CalendarAgent implements IAgent {
             calendarId: calendarId,
             requestBody: eventBody,
           });
+
+          // Mark as mutated to trigger downstream reminder sagas!
+          wasMutated = true;
+          mutationType = 'create';
+          createdEventData = {
+            title: response.data.summary,
+            startTime: response.data.start?.dateTime || formattedStart,
+            endTime: response.data.end?.dateTime || formattedEnd
+          };
 
           return {
             status: 'CREATED',
@@ -183,16 +239,19 @@ export class CalendarAgent implements IAgent {
 
           const existing = getResponse.data;
 
+          const formattedStart = args.startTime ? makeRFC3339(args.startTime, false) : undefined;
+          const formattedEnd = args.endTime ? makeRFC3339(args.endTime, true) : undefined;
+
           const updatedBody = {
             summary: args.summary !== undefined ? args.summary : existing.summary,
             description: args.description !== undefined ? args.description : existing.description,
             location: args.location !== undefined ? args.location : existing.location,
-            start: args.startTime ? {
-              dateTime: args.startTime,
+            start: formattedStart ? {
+              dateTime: formattedStart,
               timeZone: 'Asia/Kolkata',
             } : existing.start,
-            end: args.endTime ? {
-              dateTime: args.endTime,
+            end: formattedEnd ? {
+              dateTime: formattedEnd,
               timeZone: 'Asia/Kolkata',
             } : existing.end,
           };
@@ -202,6 +261,9 @@ export class CalendarAgent implements IAgent {
             eventId: args.eventId,
             requestBody: updatedBody,
           });
+
+          wasMutated = true;
+          mutationType = 'update';
 
           return {
             status: 'UPDATED',
@@ -237,6 +299,9 @@ export class CalendarAgent implements IAgent {
             calendarId: calendarId,
             eventId: args.eventId,
           });
+
+          wasMutated = true;
+          mutationType = 'delete';
 
           return {
             status: 'DELETED',
@@ -287,10 +352,12 @@ SYSTEM TIME CONTEXT:
 - Current User Local Time (IST): ${localTimeKolkata}
 - Today's Date (in User Timezone): ${localDateKolkataStr}
 
-When creating or modifying events, you MUST strictly use the User Timezone (Asia/Kolkata).
-If the user specifies a relative time like "after 20 minutes" or "tomorrow at 9 AM", calculate it relative to the Current User Local Time (IST) listed above: ${localTimeKolkata}.
-For example, if it is 6:29 PM IST, "after 20 minutes" is 6:49 PM IST on the same day.
-Ensure you pass the local ISO 8601 datetime strings to the tool WITHOUT any timezone offset or Z suffix (e.g., YYYY-MM-DDTHH:mm:ss, like '2026-05-21T18:49:17'), and ALWAYS explicitly set the timezone parameter to 'Asia/Kolkata'. Do NOT include '+05:30' or 'Z' in the start_datetime or end_datetime strings.
+CRITICAL RULES:
+1. If the user asks to list today's events, today's schedule, or what's on today, ALWAYS call "fetch_calendar_events_today" directly.
+2. If the user asks for a week, a custom date range, or a text search, ALWAYS call "find_calendar_events_by_timeline" with calculated local start/end times in local format YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.
+3. When creating or modifying events, you MUST strictly use the User Timezone (Asia/Kolkata).
+4. If the user specifies a relative time like "after 20 minutes" or "tomorrow at 9 AM", calculate it relative to the Current User Local Time (IST) listed above: ${localTimeKolkata}.
+5. Ensure you pass the local ISO 8601 datetime strings to the tool WITHOUT any timezone offset or Z suffix (e.g., YYYY-MM-DDTHH:mm:ss, like '2026-05-21T18:49:17'). The tools will handle offsets automatically.
 
 Please execute the necessary calendar operations. Use the provided tools to query or mutate Google Calendar.
 Return a concise, human-readable summary of the actions taken and the data retrieved.
@@ -309,17 +376,16 @@ Do not invent or hallucinate events.
       );
 
       // Emit calendar mutation completed events to trigger background shadow projections sync
-      const mutatingIntents = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'];
-      if (mutatingIntents.includes(context.intent)) {
+      if (wasMutated) {
         RuntimeEventBus.emit({
           type: 'CALENDAR_MUTATION_COMPLETED',
           category: 'SYSTEM',
-          message: `Calendar mutation intent "${context.intent}" completed successfully natively.`,
+          message: `Calendar mutation "${mutationType}" completed successfully natively.`,
           traceId: context.traceId,
           timestamp: new Date()
         });
 
-        if (context.intent === 'create_calendar_event') {
+        if (mutationType === 'create' && createdEventData) {
           RuntimeEventBus.emit({
             type: 'CALENDAR_EVENT_CREATED_MANUALLY',
             category: 'DOMAIN',
@@ -327,9 +393,9 @@ Do not invent or hallucinate events.
             traceId: context.traceId,
             timestamp: new Date(),
             metadata: {
-              title: context.payload.title || context.payload.summary,
-              start: context.payload.start || context.payload.startTime,
-              end: context.payload.end || context.payload.endTime,
+              title: createdEventData.title,
+              start: createdEventData.startTime,
+              end: createdEventData.endTime,
               userId: context.userId
             }
           });
@@ -340,7 +406,7 @@ Do not invent or hallucinate events.
         status: 'SUCCESS',
         data: {},
         summaryReport,
-        mutationsCount: 1, 
+        mutationsCount: wasMutated ? 1 : 0, 
         latencyMs: Date.now() - start,
       };
 

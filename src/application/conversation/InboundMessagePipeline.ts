@@ -62,18 +62,31 @@ export class InboundMessagePipeline {
         RuntimeEventBus.log('PIPELINE_REPLY_MATCH', 'TRANSPORT', `Incoming message correlates to staged media ID: ${staged.mediaId} | Status: ${staged.status}`, traceId);
       }
     } else if (db) {
-      // Fallback: Find the most recent active staged media for this user in the last 10 minutes
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      staged = await db.collection('staged_media').findOne(
-        {
-          userId,
-          status: 'PENDING',
-          createdAt: { $gte: tenMinutesAgo }
-        },
-        { sort: { createdAt: -1 } }
-      );
-      if (staged) {
-        RuntimeEventBus.log('PIPELINE_REPLY_MATCH_FALLBACK', 'TRANSPORT', `Correlated to most recent active staged media ID: ${staged.mediaId} via fallback`, traceId);
+      // Fallback: Find the most recent active staged media for this user in the last 10 minutes,
+      // but only if the user query is a command to store or process it (avoiding polluting retrieval queries like "link?")
+      const lowercaseMsg = (messageText || '').toLowerCase();
+      const isStagingCommand = lowercaseMsg.includes('background') ||
+                               lowercaseMsg.includes('removebg') ||
+                               lowercaseMsg.includes('remove bg') ||
+                               /\b(bg|clear bg)\b/i.test(lowercaseMsg) ||
+                               lowercaseMsg.includes('save') ||
+                               lowercaseMsg.includes('upload') ||
+                               lowercaseMsg.includes('store') ||
+                               lowercaseMsg.includes('keep');
+
+      if (isStagingCommand) {
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        staged = await db.collection('staged_media').findOne(
+          {
+            userId,
+            status: 'PENDING',
+            createdAt: { $gte: tenMinutesAgo }
+          },
+          { sort: { createdAt: -1 } }
+        );
+        if (staged) {
+          RuntimeEventBus.log('PIPELINE_REPLY_MATCH_FALLBACK', 'TRANSPORT', `Correlated to most recent active staged media ID: ${staged.mediaId} via fallback command matching`, traceId);
+        }
       }
     }
 

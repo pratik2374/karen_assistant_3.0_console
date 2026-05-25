@@ -1,6 +1,7 @@
 import { IAgent, AgentContext, AgentExecutionResult } from '../../agents/base/IAgent.js';
 import { CalendarAgent } from '../../agents/calendar/CalendarAgent.js';
 import { SystemOpsAgent } from '../../agents/system/SystemOpsAgent.js';
+import { DocsAgent } from '../../agents/docs/DocsAgent.js';
 import { RuntimeEventBus } from '../../console/RuntimeEventBus.js';
 import { OpenAI, OpenAIAgent } from '@llamaindex/openai';
 import { FunctionTool } from 'llamaindex';
@@ -23,7 +24,8 @@ export type RouterResult =
 export class AgentRouter {
   constructor(
     private calendarAgent: CalendarAgent,
-    private systemOpsAgent: SystemOpsAgent
+    private systemOpsAgent: SystemOpsAgent,
+    private docsAgent: DocsAgent
   ) {}
 
   public canRoute(intent: string): boolean {
@@ -70,6 +72,29 @@ export class AgentRouter {
       }
     );
 
+    const docsTool = FunctionTool.from(
+      async (payload: any) => {
+        RuntimeEventBus.log('AGENT_ROUTER', 'SYSTEM', `LLM Chose DocsAgent`, context.traceId);
+        routedTo = 'DocsAgent';
+        subAgentResult = await this.docsAgent.execute({ ...context, intent: normalizedIntent, payload });
+        return `Successfully routed to DocsAgent. Summary: ${subAgentResult.summaryReport}`;
+      },
+      {
+        name: 'route_to_docs',
+        description: 'Route the request to the DocsAgent. Use this for retrieving or storing personal documents (e.g. Aadhar, PAN, Passport, Voter ID) from the secure vault. For RETRIEVE, pass the query or "all". For STORE, pass the name and the {{MASKED_URL}} placeholder.',
+        parameters: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['RETRIEVE', 'STORE'] },
+            query: { type: 'string', description: 'The search query for retrieval, or "all" to list all.' },
+            name: { type: 'string', description: 'The name of the document to store.' },
+            urlPlaceholder: { type: 'string', description: 'The {{MASKED_URL_x}} placeholder to store.' }
+          },
+          required: ['action']
+        }
+      }
+    );
+
     try {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -83,7 +108,7 @@ export class AgentRouter {
       });
 
       const agent = new OpenAIAgent({
-        tools: [calendarTool, systemOpsTool],
+        tools: [calendarTool, systemOpsTool, docsTool],
         llm,
         verbose: true,
       });
@@ -97,6 +122,7 @@ Payload: ${JSON.stringify(context.payload)}
 
 If the intent involves standard reminders, tasks, timers, or system state, call route_to_system_ops.
 If the intent involves calendar events or scheduling external meetings, call route_to_calendar.
+If the intent involves retrieving or saving personal/secure documents to the vault, call route_to_docs.
 
 Call the appropriate tool now. DO NOT generate an answer without calling a tool.
       `;

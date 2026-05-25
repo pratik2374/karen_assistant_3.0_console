@@ -11,6 +11,7 @@ import { MemoryTier } from '../../domain/memory/MemoryTiers.js';
 import { MainKarenOrchestrator } from '../ai/agents/MainKarenOrchestrator.js';
 import { MemoryService } from '../ai/memory/MemoryService.js';
 import { AgentRouter } from '../agents/AgentRouter.js';
+import { DocumentVaultMongoRepository } from '../../infrastructure/persistence/mongo/repositories/DocumentVaultMongoRepository.js';
 import { randomUUID } from 'crypto';
 
 export class InboundMessagePipeline {
@@ -23,7 +24,8 @@ export class InboundMessagePipeline {
     private persistence?: any,
     private orchestrator?: MainKarenOrchestrator,
     private memoryService?: MemoryService,
-    private agentRouter?: AgentRouter
+    private agentRouter?: AgentRouter,
+    private vaultRepo?: DocumentVaultMongoRepository
   ) {}
 
   public async process(
@@ -37,6 +39,22 @@ export class InboundMessagePipeline {
       traceId
     );
 
+    // ZERO-LLM INBOUND URL MASKING
+    const urlMasks: Record<string, string> = {};
+    let maskedMessageText = messageText;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    let matchCount = 0;
+    maskedMessageText = maskedMessageText.replace(urlRegex, (match) => {
+      matchCount++;
+      const maskKey = `{{MASKED_URL_${matchCount}}}`;
+      urlMasks[maskKey] = match;
+      return maskKey;
+    });
+
+    if (matchCount > 0) {
+      RuntimeEventBus.log('PIPELINE_URL_MASK', 'SECURITY', `Masked ${matchCount} inbound URLs from LLM.`, traceId);
+    }
+
     const session = await this.sessionRepo.getSession(userId);
 
     // Save user message and fetch/cache its retrieved past dialogue matches
@@ -44,21 +62,21 @@ export class InboundMessagePipeline {
       await this.memoryService.saveMessageAndRetrievedPastContext(
         userId,
         'user',
-        messageText,
+        maskedMessageText,
         messageId,
         traceId
       ).catch(err => console.error('[MemoryService] Failed to save user message:', err));
     }
 
     if (this.orchestrator) {
-      const orchestratorResult = await this.orchestrator.orchestrate(userId, messageText, messageId, traceId);
+      const orchestratorResult = await this.orchestrator.orchestrate(userId, maskedMessageText, messageId, traceId);
       if (!orchestratorResult.shouldExecuteDirectly) {
         await this.sendReply(userId, orchestratorResult.responseText, messageId);
         return;
       }
     }
 
-    let queryToProcess = messageText;
+    let queryToProcess = maskedMessageText;
 
     // Resolve Clarification State
     if (session.isWaitingForClarification()) {
@@ -207,6 +225,7 @@ export class InboundMessagePipeline {
                 isReplay: false,
                 isSandbox: false,
               };
+              (agentContext as any).urlMasks = urlMasks; // Inject for DocsAgent unmasking
 
               const routerResult = await this.agentRouter.route(intentAction, agentContext);
 
@@ -251,9 +270,31 @@ export class InboundMessagePipeline {
       await this.sessionRepo.saveSession(session);
     }
   }
-
   private async sendReply(to: string, body: string, idempotencyKey: string): Promise<void> {
-    const msg: WhatsAppMessage = { to, body, idempotencyKey: `reply-${idempotencyKey}` };
+    if (!body || body.trim() === '') {
+      console.warn('[INBOUND PIPELINE] Warning: Attempted to send empty reply. Skipping WhatsApp payload.');
+      return;
+    }
+
+    // LATE-BINDING LINK INJECTION (OUTBOUND)
+    let finalBody = body;
+    if (this.vaultRepo && finalBody.includes('{{VAULT_DOC:')) {
+      const docRegex = /\{\{VAULT_DOC:([a-zA-Z0-9_-]+)\}\}/g;
+      const matches = Array.from(finalBody.matchAll(docRegex));
+      
+      for (const match of matches) {
+        const docId = match[1];
+        const doc = await this.vaultRepo.findById(docId);
+        if (doc) {
+          finalBody = finalBody.replace(match[0], doc.link);
+        } else {
+          finalBody = finalBody.replace(match[0], '[Document Link Not Found]');
+        }
+      }
+      RuntimeEventBus.log('PIPELINE_LINK_INJECT', 'SECURITY', `Injected ${matches.length} secure document links for outbound message.`);
+    }
+
+    const msg: WhatsAppMessage = { to, body: finalBody, idempotencyKey: `reply-${idempotencyKey}` };
     await this.whatsapp.sendMessage(msg, false, false);
 
     // Save assistant message to MemoryService and trigger background cipherizer

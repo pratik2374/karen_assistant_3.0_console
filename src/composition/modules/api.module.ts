@@ -48,6 +48,11 @@ import { CircuitBreaker } from '../../infrastructure/resiliency/CircuitBreaker.j
 import { BootSyncCoordinator } from '../../console/BootSyncCoordinator.js';
 import { CalendarBootstrapService } from '../../console/CalendarBootstrapService.js';
 
+// Vault Imports
+import { DocumentVaultMongoRepository } from '../../infrastructure/persistence/mongo/repositories/DocumentVaultMongoRepository.js';
+import { DocsAgent } from '../../agents/docs/DocsAgent.js';
+import { VaultController } from '../../api/v1/controllers/VaultController.js';
+
 // New Multi-Agent Architecture
 import { ComposioClient } from '../../infrastructure/composio/ComposioClient.js';
 import { CalendarTool } from '../../tools/calendar/CalendarTool.js';
@@ -142,6 +147,8 @@ export function buildApiModule(
   let calendarBootstrapService: CalendarBootstrapService | undefined;
   let dailyReportService: any | undefined;
   let agentRouter: AgentRouter | undefined;
+  let vaultRepo: DocumentVaultMongoRepository | undefined;
+  let docsAgent: DocsAgent | undefined;
 
   if (persistence) {
     const sagaRepository = new MongoSagaRepository(persistence.db);
@@ -191,17 +198,31 @@ export function buildApiModule(
     const systemOpsAgentInstance = new SystemOpsAgent(persistence, application.taskCommandExecutor);
 
     // AgentRouter — deterministic dispatcher wired to InboundMessagePipeline
-    agentRouter = new AgentRouter(calendarAgentInstance, systemOpsAgentInstance);
+    if (persistence.db) {
+      const calendarProjectionRepo = new CalendarProjectionMongoRepository(persistence.db);
+      vaultRepo = new DocumentVaultMongoRepository(persistence.db);
+      docsAgent = new DocsAgent(vaultRepo);
+
+      agentRouter = new AgentRouter(
+        new CalendarAgent(
+          new CalendarTool(calendarCircuitBreaker, composioClient, calendarProjectionRepo),
+          calendarProjectionRepo
+        ),
+        new SystemOpsAgent(persistence, application.taskCommandExecutor),
+        docsAgent
+      );
+    }
+    
     (pipeline as any).agentRouter = agentRouter;
 
     // Legacy CalendarSyncAgent still handles BullMQ-based outbound sync jobs
     // Uses GoogleCalendarAdapter temporarily until CalendarSyncWorker is migrated to CalendarTool
     const syncJobQueue = new Queue('calendar_sync_jobs', { connection: messaging.redis });
-    const calendarSyncAgent = new CalendarSyncAgent(calendarProjectionRepo, syncJobQueue);
+    const calendarSyncAgent = new CalendarSyncAgent(new CalendarProjectionMongoRepository(persistence.db), syncJobQueue);
 
     calendarBootstrapService = new CalendarBootstrapService(
-      calendarTool,
-      calendarProjectionRepo,
+      new CalendarTool(calendarCircuitBreaker, composioClient, new CalendarProjectionMongoRepository(persistence.db)),
+      new CalendarProjectionMongoRepository(persistence.db),
       persistence.taskRepository,
       persistence.outboxStore,
       memoryService!
@@ -217,6 +238,11 @@ export function buildApiModule(
       messaging.idempotencyStore,
       calendarSyncAgent
     );
+
+    if (vaultRepo) {
+      const vaultController = new VaultController(vaultRepo);
+      app.use('/vault', vaultController.router);
+    }
 
     const dailyReportQueue = new Queue('daily_report_queue', { connection: messaging.redis });
     dailyReportService = new DailyReportService(persistence.db!, whatsappAdapter, dailyReportQueue);

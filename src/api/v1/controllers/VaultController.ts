@@ -1052,7 +1052,7 @@ function renderTable() {
         return '<tr>' +
           '<td>' +
             '<label class="chk-container">' +
-              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(\'' + id + '\', this)">' +
+              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(this.dataset.id, this)">' +
               '<span class="chk-checkmark"></span>' +
             '</label>' +
           '</td>' +
@@ -1061,7 +1061,7 @@ function renderTable() {
           '<td class="doc-link-cell">' +
             (link ? '<a href="' + link + '" target="_blank" rel="noopener noreferrer">Open Link<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>' : '<span class="doc-id">None</span>') +
           '</td>' +
-          '<td style="text-align: right;"><button class="btn btn-danger" onclick="deleteItem(\'' + id + '\', this)">Remove</button></td>' +
+          '<td style="text-align: right;"><button class="btn btn-danger" data-id="' + id + '" onclick="deleteItem(this.dataset.id, this)">Remove</button></td>' +
         '</tr>';
       } else if (activeTab === 'personal') {
         const title = safeText(item.name || '(no name)');
@@ -1071,7 +1071,7 @@ function renderTable() {
         return '<tr>' +
           '<td>' +
             '<label class="chk-container">' +
-              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(\'' + id + '\', this)">' +
+              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(this.dataset.id, this)">' +
               '<span class="chk-checkmark"></span>' +
             '</label>' +
           '</td>' +
@@ -1079,12 +1079,12 @@ function renderTable() {
           '<td>' +
             '<div class="secure-value-wrap">' +
               '<span class="secure-value masked">••••••••</span>' +
-              '<span class="secure-value plain" style="display: none; font-family: \'DM Mono\', monospace;">' + secret + '</span>' +
+              '<span class="secure-value plain" style="display: none; font-family: DM Mono, monospace;">' + secret + '</span>' +
               '<button class="eye-btn" onclick="toggleSecretVisibility(this)" title="Toggle Visibility">👁</button>' +
             '</div>' +
           '</td>' +
           '<td><span class="doc-id">' + id.slice(0, 8) + '…</span></td>' +
-          '<td style="text-align: right;"><button class="btn btn-danger" onclick="deleteItem(\'' + id + '\', this)">Remove</button></td>' +
+          '<td style="text-align: right;"><button class="btn btn-danger" data-id="' + id + '" onclick="deleteItem(this.dataset.id, this)">Remove</button></td>' +
         '</tr>';
       } else { // 'vault'
         const name = safeText(item.name || '(no name)');
@@ -1101,7 +1101,7 @@ function renderTable() {
         return '<tr>' +
           '<td>' +
             '<label class="chk-container">' +
-              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(\'' + id + '\', this)">' +
+              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(this.dataset.id, this)">' +
               '<span class="chk-checkmark"></span>' +
             '</label>' +
           '</td>' +
@@ -1113,7 +1113,7 @@ function renderTable() {
             '</a>' +
           '</td>' +
           '<td><span class="doc-id">' + id.slice(0, 8) + '…</span></td>' +
-          '<td style="text-align: right;"><button class="btn btn-danger" onclick="deleteItem(\'' + id + '\', this)">Remove</button></td>' +
+          '<td style="text-align: right;"><button class="btn btn-danger" data-id="' + id + '" onclick="deleteItem(this.dataset.id, this)">Remove</button></td>' +
         '</tr>';
       }
     });

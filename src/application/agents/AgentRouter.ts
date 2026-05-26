@@ -2,6 +2,7 @@ import { IAgent, AgentContext, AgentExecutionResult } from '../../agents/base/IA
 import { CalendarAgent } from '../../agents/calendar/CalendarAgent.js';
 import { SystemOpsAgent } from '../../agents/system/SystemOpsAgent.js';
 import { DocsAgent } from '../../agents/docs/DocsAgent.js';
+import { ListAgent } from '../../agents/list/ListAgent.js';
 import { RuntimeEventBus } from '../../console/RuntimeEventBus.js';
 import { OpenAI, OpenAIAgent } from '@llamaindex/openai';
 import { FunctionTool } from 'llamaindex';
@@ -25,7 +26,8 @@ export class AgentRouter {
   constructor(
     private calendarAgent: CalendarAgent,
     private systemOpsAgent: SystemOpsAgent,
-    private docsAgent: DocsAgent
+    private docsAgent: DocsAgent,
+    private listAgent: ListAgent
   ) {}
 
   public canRoute(intent: string): boolean {
@@ -117,6 +119,29 @@ export class AgentRouter {
       }
     );
 
+    const listsTool = FunctionTool.from(
+      async (payload: any) => {
+        RuntimeEventBus.log('AGENT_ROUTER', 'SYSTEM', `LLM Chose ListAgent`, context.traceId);
+        routedTo = 'ListAgent';
+        const rawUserQuery = context.payload?.userQuery || context.payload?.query || "";
+        const mergedPayload = { ...context.payload, ...payload, userQuery: rawUserQuery };
+        subAgentResult = await this.listAgent.execute({ ...context, intent: normalizedIntent, payload: mergedPayload });
+        return `Successfully routed to ListAgent. Summary: ${subAgentResult.summaryReport}`;
+      },
+      {
+        name: 'route_to_lists',
+        description: 'Route the request to the ListAgent. Use this for ANY grocery lists, movie bucket lists, or coding link buckets. Actions include adding items, querying lists, tagging coding links, and checking off grocery purchases.',
+        parameters: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['ADD', 'QUERY', 'COMPLETE'] },
+            listType: { type: 'string', enum: ['grocery', 'coding_bucket', 'movie_bucket'] }
+          },
+          required: ['action', 'listType']
+        }
+      }
+    );
+
     try {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -130,7 +155,7 @@ export class AgentRouter {
       });
 
       const agent = new OpenAIAgent({
-        tools: [calendarTool, systemOpsTool, docsTool, directChatTool],
+        tools: [calendarTool, systemOpsTool, docsTool, directChatTool, listsTool],
         llm,
         verbose: true,
       });
@@ -154,6 +179,7 @@ ROUTING CRITERIA:
 - If the intent involves standard reminders, tasks, timers, or system state, call route_to_system_ops.
 - If the intent involves calendar events or scheduling external meetings, call route_to_calendar.
 - If the intent involves retrieving or saving personal/secure documents to the vault, or removing image backgrounds, call route_to_docs.
+- If the intent involves grocery lists, coding link buckets, or movie bucket lists (adding items, searching/viewing lists, completing/deleting items), call route_to_lists.
 
 Call the appropriate tool now. DO NOT generate an answer without calling a tool.
       `;

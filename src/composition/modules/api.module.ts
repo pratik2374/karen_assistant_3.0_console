@@ -24,6 +24,7 @@ import { ReminderSubAgent } from '../../application/ai/agents/ReminderSubAgent.j
 import { MainKarenOrchestrator } from '../../application/ai/agents/MainKarenOrchestrator.js';
 import { MemoryService } from '../../application/ai/memory/MemoryService.js';
 import { KarenPersonaEngine } from '../../application/ai/persona/KarenPersonaEngine.js';
+import { ListAgent } from '../../agents/list/ListAgent.js';
 import express from 'express';
 
 import { RuntimeConfig } from '../config/RuntimeConfig.js';
@@ -200,13 +201,16 @@ export function buildApiModule(
       docsAgent = new DocsAgent(vaultRepo, persistence.db);
       (docsAgent as any).timerService = timerService;
 
+      const listAgent = new ListAgent(persistence.db);
+
       agentRouter = new AgentRouter(
         new CalendarAgent(
           new CalendarTool(calendarCircuitBreaker, null, calendarProjectionRepo),
           calendarProjectionRepo
         ),
         new SystemOpsAgent(persistence, application.taskCommandExecutor),
-        docsAgent
+        docsAgent,
+        listAgent
       );
     }
     

@@ -687,12 +687,12 @@ export class VaultController {
     </div>
   </div>
 
-  <div class="bulk-drawer" id="bulkDrawer">
-    <span class="bulk-text"><span id="bulkCount">0</span> selected</span>
-    <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="deleteBulkSelected()">Delete Selected</button>
-    <button onclick="selectedIds=[];document.querySelectorAll('.item-chk').forEach(c=>c.checked=false);document.getElementById('selectAll').checked=false;updateBulkDrawer();" style="background:transparent;border:none;color:var(--ink3);cursor:pointer;font-size:1rem;padding:4px;">✕</button>
-  </div>
+</div>
 
+<div class="bulk-drawer" id="bulkDrawer">
+  <span class="bulk-text"><span id="bulkCount">0</span> selected</span>
+  <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="deleteBulkSelected()">Delete Selected</button>
+  <button onclick="selectedIds=[];document.querySelectorAll('.item-chk').forEach(c=>c.checked=false);var sa=document.getElementById('selectAll');if(sa)sa.checked=false;updateBulkDrawer();" style="background:transparent;border:none;color:var(--ink3);cursor:pointer;font-size:1rem;padding:4px;">✕</button>
 </div>
 
 <script>
@@ -1155,18 +1155,19 @@ async function fetchDocs() {
     updateStats();
     renderTable();
 
-    document.getElementById('statStatus').className = 'badge badge-success';
-    document.getElementById('statStatus').textContent = '● Online';
+    const statusEl2 = document.getElementById('statStatus');
+    if (statusEl2) { statusEl2.className = 'badge badge-success'; statusEl2.textContent = '\u25cf Online'; }
 
   } catch (err) {
-    dbg('ERR', 'FETCH', 'fetchDocs FAILED: ' + err.message);
-    document.getElementById('statStatus').className = 'badge badge-amber';
-    document.getElementById('statStatus').textContent = '● Degraded';
-    document.getElementById('docTableBody').innerHTML =
+    dbg('ERR', 'FETCH', 'fetchDocs FAILED: ' + (err && err.message ? err.message : String(err)));
+    const statusEl = document.getElementById('statStatus');
+    const tbodyEl = document.getElementById('docTableBody');
+    if (statusEl) { statusEl.className = 'badge badge-amber'; statusEl.textContent = '\u25cf Degraded'; }
+    if (tbodyEl) tbodyEl.innerHTML =
       '<tr><td colspan="5"><div class="state-box">' +
-      '<div class="state-box-icon">⚠</div>' +
-      '<p class="state-box-title">Could not load documents</p>' +
-      '<p class="state-box-sub">' + safeText(err.message) + '</p>' +
+      '<div class="state-box-icon">\u26a0</div>' +
+      '<p class="state-box-title">Could not load data</p>' +
+      '<p class="state-box-sub">' + safeText(err && err.message ? err.message : 'Unknown error') + '</p>' +
       '</div></td></tr>';
   }
 }
@@ -1377,16 +1378,17 @@ function init() {
     spinStyle.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
     document.head.appendChild(spinStyle);
 
-    // Initial setup of dotted card inputs
+    // Initial setup
+    updateAddCardFields();
     setupDottedCardEvents();
 
     dbg('INFO', 'INIT', 'Calling fetchDocs()...');
-    fetchDocs();
+    fetchDocs().catch(function(e) { dbg('ERR', 'INIT', 'fetchDocs unhandled rejection: ' + e.message); });
 
     dbg('INFO', 'INIT', '=== Init complete ===');
 
   } catch (err) {
-    dbg('ERR', 'INIT', 'INIT CRASHED: ' + err.message);
+    dbg('ERR', 'INIT', 'INIT CRASHED: ' + (err && err.message ? err.message : String(err)));
   }
 }
 

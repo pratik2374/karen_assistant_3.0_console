@@ -88,10 +88,13 @@ export class DocsAgent implements IAgent {
         async (args: { name: string; urlPlaceholder: string; existingDocId?: string }) => {
           RuntimeEventBus.log('DOCS_AGENT_TOOL', 'SYSTEM', `Store/Update document: name="${args.name}", placeholder="${args.urlPlaceholder}", existingDocId="${args.existingDocId || ''}"`, context.traceId);
           
-          // Unmask the URL
-          const realUrl = (context as any).urlMasks?.[args.urlPlaceholder];
+          // Unmask the URL or fallback to the raw plain text value
+          let realUrl = (context as any).urlMasks?.[args.urlPlaceholder];
           if (!realUrl) {
-            throw new Error(`Failed to store document. The URL placeholder "${args.urlPlaceholder}" was not found or is invalid.`);
+            if (args.urlPlaceholder.startsWith('{{MASKED_URL_')) {
+              throw new Error(`Failed to store document. The URL placeholder "${args.urlPlaceholder}" was not found or is invalid.`);
+            }
+            realUrl = args.urlPlaceholder;
           }
 
           // Programmatic Smart-Matching & Updating
@@ -146,8 +149,8 @@ export class DocsAgent implements IAgent {
           parameters: {
             type: 'object',
             properties: {
-              name: { type: 'string', description: 'The name of the document.' },
-              urlPlaceholder: { type: 'string', description: 'The exact {{MASKED_URL_x}} placeholder representing the URL.' },
+              name: { type: 'string', description: 'The name of the document or credential.' },
+              urlPlaceholder: { type: 'string', description: 'The exact {{MASKED_URL_x}} placeholder representing the URL, or the raw plain text secret/password/link if it was not masked.' },
               existingDocId: { type: 'string', description: 'Optional. The exact docId of an existing document if updating a specific one.' }
             },
             required: ['name', 'urlPlaceholder']
@@ -407,7 +410,8 @@ CRITICAL PRIVACY RULE:
 - Document links are 100% hidden from you. The database tools will only return document metadata (ID, name, and aliases) and will never return the raw link.
 - When retrieving or referring to a document, you MUST NEVER attempt to guess or output a raw URL link. Instead, you MUST output a secure placeholder in the exact format: {{VAULT_DOC:docId}} where "docId" is the exact ID of the document (e.g. {{VAULT_DOC:123-456}}).
 - The outbound messaging pipeline will automatically intercept this placeholder and safely inject the actual URL.
-- When saving or updating a document, the user's raw URL has been masked as a placeholder like {{MASKED_URL_1}}. You must pass this exact placeholder as the "urlPlaceholder" argument to the store_vault_document tool.
+- When saving or updating a document/credential, if the user sent a raw URL link, it has been masked as a placeholder like {{MASKED_URL_1}}. You must pass this exact placeholder as the "urlPlaceholder" argument.
+- If the user sent a plain text secret, a password, a contact number, or a text link (e.g. pratikgond.tech or MySecretPassword) which did NOT get masked, you must pass that raw plain text directly as the "urlPlaceholder" argument to the store_vault_document tool.
 
 BACKGROUND REMOVAL INSTRUCTIONS:
 - If the user asks to remove the background of an image or a URL, call the remove_image_background tool.

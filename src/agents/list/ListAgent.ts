@@ -58,6 +58,22 @@ export class ListAgent implements IAgent {
 
       // Helper function to scrape metadata from public HTML and keyless oEmbed APIs
       const scrapeMetadata = async (url: string): Promise<{ title: string; description: string }> => {
+        const decodeHtmlEntities = (str: string): string => {
+          if (!str) return '';
+          return str
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, '&')
+            .replace(/&#39;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+              try { return String.fromCodePoint(parseInt(hex, 16)); } catch (e) { return match; }
+            })
+            .replace(/&#([0-9]+);/g, (match, dec) => {
+              try { return String.fromCodePoint(parseInt(dec, 10)); } catch (e) { return match; }
+            });
+        };
+
         try {
           // 1. YouTube oEmbed Integration
           let cleanedUrl = url;
@@ -77,7 +93,7 @@ export class ListAgent implements IAgent {
                 const data = await oembedRes.json() as any;
                 if (data && data.title) {
                   return {
-                    title: data.title.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#39;/g, "'").trim(),
+                    title: decodeHtmlEntities(data.title).trim(),
                     description: data.author_name ? `By ${data.author_name}` : ''
                   };
                 }
@@ -88,9 +104,10 @@ export class ListAgent implements IAgent {
           }
 
           // 2. Static HTML Scraper Fallback (for Instagram and other links)
+          // Utilizing facebookexternalhit User-Agent allows us to get fully server-side rendered HTML metadata (OpenGraph tags)
           const response = await fetch(url, {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+              'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_voiced.html)'
             }
           });
           if (!response.ok) return { title: '', description: '' };
@@ -123,8 +140,8 @@ export class ListAgent implements IAgent {
           }
           
           return {
-            title: title.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#39;/g, "'").trim(),
-            description: description.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#39;/g, "'").trim()
+            title: decodeHtmlEntities(title).trim(),
+            description: decodeHtmlEntities(description).trim()
           };
         } catch (err) {
           console.error('[ListAgent Scraper] Error scraping URL metadata:', err);

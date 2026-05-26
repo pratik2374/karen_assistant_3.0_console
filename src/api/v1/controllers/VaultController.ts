@@ -562,6 +562,32 @@ export class VaultController {
     #searchInput { height: 36px; padding: 0 12px 0 34px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--ink); background: rgba(0,0,0,0.2); outline: none; width: 200px; transition: border-color 0.15s, width 0.2s ease; }
     #searchInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(81,81,255,0.15); width: 260px; background: rgba(0,0,0,0.4); }
 
+    #bucketFilterSelect {
+      height: 36px;
+      padding: 0 28px 0 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.82rem;
+      color: var(--ink);
+      background: rgba(0,0,0,0.2);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 16px;
+    }
+    #bucketFilterSelect:focus {
+      border-color: var(--accent);
+      background-color: rgba(0,0,0,0.4);
+      box-shadow: 0 0 0 3px rgba(81,81,255,0.15);
+    }
+
     .secure-value-wrap { display: flex; align-items: center; gap: 8px; }
     .eye-btn { background: transparent; border: none; color: var(--ink3); cursor: pointer; font-size: 0.9rem; padding: 2px 6px; border-radius: 4px; transition: all 0.15s; outline: none; }
     .eye-btn:hover { color: var(--ink); background: var(--card-hover); }
@@ -629,9 +655,14 @@ export class VaultController {
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title" id="tablePanelTitle">Documents</span>
-      <div class="search-wrap">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="searchInput" placeholder="Filter current view…" oninput="renderTable()">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div id="bucketFilterWrap" style="display: none;">
+          <select id="bucketFilterSelect" onchange="renderTable()"></select>
+        </div>
+        <div class="search-wrap">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="searchInput" placeholder="Filter current view…" oninput="renderTable()">
+        </div>
       </div>
     </div>
     <div class="doc-table-wrap">
@@ -662,16 +693,9 @@ export class VaultController {
       <span>Scroll to bottom &amp; hover to add new entry</span>
     </div>
     <div class="form-content">
-      <div class="bucket-type-row" id="bucketTypeSelectorRow" style="display: none;">
+      <div class="bucket-type-row" id="bucketTypeSelectorRow" style="display: none; align-items: center; gap: 8px;">
         <span>Select Bucket:</span>
-        <label class="bucket-radio">
-          <input type="radio" name="bucketType" value="coding_bucket" checked>
-          💻 Coding
-        </label>
-        <label class="bucket-radio">
-          <input type="radio" name="bucketType" value="movie_bucket">
-          🎬 Movie
-        </label>
+        <select id="addBucketSelect" style="height: 32px; padding: 0 28px 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 0.8rem; color: var(--ink); background: rgba(0,0,0,0.3); outline: none; transition: border-color 0.15s; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url(&quot;data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>&quot;); background-repeat: no-repeat; background-position: right 6px center; background-size: 14px;"></select>
       </div>
       <div class="form-row">
         <div class="field">
@@ -793,6 +817,15 @@ function switchTab(tab) {
   document.getElementById('tablePanelTitle').textContent = 
     tab === 'vault' ? 'Secure Documents' : tab === 'personal' ? 'Personal Info (Text)' : 'Buckets & Lists';
 
+  // Show/Hide bucket filter wrap
+  const filterWrap = document.getElementById('bucketFilterWrap');
+  if (filterWrap) {
+    filterWrap.style.display = tab === 'buckets' ? 'block' : 'none';
+  }
+  if (tab === 'buckets') {
+    populateBucketFilter();
+  }
+
   // Clear selections
   selectedIds = [];
   const selectAllChk = document.getElementById('selectAll');
@@ -807,6 +840,62 @@ function switchTab(tab) {
   renderTable();
 }
 
+function getBucketLabel(listType) {
+  if (listType === 'coding_bucket') return '💻 Coding';
+  if (listType === 'movie_bucket') return '🎬 Movie';
+  if (listType === 'grocery') return '🛒 Grocery';
+  
+  let clean = listType.replace(/_bucket$/i, '').replace(/[_-]/g, ' ');
+  return clean.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function populateBucketFilter() {
+  const select = document.getElementById('bucketFilterSelect');
+  if (!select) return;
+
+  const prevVal = select.value;
+  const types = [...new Set(allLists.map(item => item.listType))].sort();
+
+  select.innerHTML = '<option value="all" style="background: #151528;">All Buckets</option>';
+
+  types.forEach(t => {
+    if (!t) return;
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = getBucketLabel(t);
+    opt.style.background = '#151528';
+    select.appendChild(opt);
+  });
+
+  if (types.includes(prevVal)) {
+    select.value = prevVal;
+  } else {
+    select.value = 'all';
+  }
+}
+
+function populateAddBucketSelect() {
+  const select = document.getElementById('addBucketSelect');
+  if (!select) return;
+
+  let types = ['coding_bucket', 'movie_bucket'];
+  allLists.forEach(item => {
+    if (item.listType && !types.includes(item.listType)) {
+      types.push(item.listType);
+    }
+  });
+  types.sort();
+
+  select.innerHTML = '';
+  types.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = getBucketLabel(t);
+    opt.style.background = '#151528';
+    select.appendChild(opt);
+  });
+}
+
 function updateAddCardFields() {
   const card = document.getElementById('dottedAddCard');
   if (!card) return;
@@ -819,6 +908,7 @@ function updateAddCardFields() {
 
   if (activeTab === 'buckets') {
     bucketSelectRow.style.display = 'flex';
+    populateAddBucketSelect();
     nameLabel.textContent = 'Bucket Title';
     nameInput.placeholder = 'e.g. Learn LlamaIndex';
     valueLabel.textContent = 'Link or Notes';
@@ -964,7 +1054,12 @@ function renderTable() {
       return !link.startsWith('http://') && !link.startsWith('https://');
     });
   } else if (activeTab === 'buckets') {
-    items = allLists;
+    const bucketFilterVal = document.getElementById('bucketFilterSelect')?.value || 'all';
+    if (bucketFilterVal === 'all') {
+      items = allLists;
+    } else {
+      items = allLists.filter(x => x.listType === bucketFilterVal);
+    }
   }
 
   // 2. Filter by search query
@@ -1045,7 +1140,7 @@ function renderTable() {
       if (activeTab === 'buckets') {
         const title = safeText(item.title || '(no title)');
         const link = safeText(item.metadata?.rawUrl || '');
-        const bType = item.listType === 'movie_bucket' ? '🎬 Movie' : '💻 Coding';
+        const bType = getBucketLabel(item.listType || '');
         const bClass = item.listType === 'movie_bucket' ? 'badge-amber' : 'badge-success';
         const abbr = initials(item.title || '');
 
@@ -1152,6 +1247,9 @@ async function fetchDocs() {
 
     dbg('INFO', 'FETCH', 'Data loaded, docs count=' + allDocs.length + ', lists count=' + allLists.length);
 
+    if (activeTab === 'buckets') {
+      populateBucketFilter();
+    }
     updateStats();
     renderTable();
 
@@ -1209,9 +1307,9 @@ async function addEntryFromDottedCard() {
 
   let bucketType = 'coding_bucket';
   if (activeTab === 'buckets') {
-    const selectedRadio = document.querySelector('input[name="bucketType"]:checked');
-    if (selectedRadio) {
-      bucketType = selectedRadio.value;
+    const addSelect = document.getElementById('addBucketSelect');
+    if (addSelect) {
+      bucketType = addSelect.value;
     }
   }
 
@@ -1422,7 +1520,7 @@ if (document.readyState === 'loading') {
 
       log('GET', 'Calling user_lists query...');
       const lists = await this.vaultRepo.db.collection('user_lists')
-        .find({ listType: { $in: ['coding_bucket', 'movie_bucket'] }, status: 'active' })
+        .find({ status: 'active' })
         .toArray();
 
       log('GET', `Sending unified docs (${docs.length}) and lists (${lists.length})`);
@@ -1453,7 +1551,7 @@ if (document.readyState === 'loading') {
     try {
       if (type === 'list') {
         // Save to user_lists collection
-        const targetListType = (listType === 'movie_bucket' || listType === 'coding_bucket') ? listType : 'coding_bucket';
+        const targetListType = (listType && typeof listType === 'string' && listType.trim().length > 0) ? listType.trim() : 'coding_bucket';
         
         // Find existing userId to align with
         let userId = 'default-user';

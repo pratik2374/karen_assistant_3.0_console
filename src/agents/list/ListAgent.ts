@@ -2,7 +2,8 @@
 import { IAgent, AgentContext, AgentExecutionResult } from '../base/IAgent.js';
 import { randomUUID } from 'crypto';
 import { RuntimeEventBus } from '../../console/RuntimeEventBus.js';
-import { OpenAI, OpenAIAgent } from '@llamaindex/openai';
+import { OpenAI as LlamaOpenAI, OpenAIAgent } from '@llamaindex/openai';
+import OpenAI from 'openai';
 import { FunctionTool } from 'llamaindex';
 import * as dotenv from 'dotenv';
 dotenv.config();
@@ -444,7 +445,7 @@ Respond STRICTLY in JSON format with exactly three keys: "title", "summary", "ta
       );
 
       // Initialize OpenAI & Agent
-      const llm = new OpenAI({
+      const llm = new LlamaOpenAI({
         apiKey,
         model: 'gpt-4o-mini',
         temperature: 0,

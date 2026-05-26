@@ -179,10 +179,7 @@ export class ListAgent implements IAgent {
               title: { $regex: new RegExp(`^${originalInput}$`, 'i') }
             });
             if (activeGrocery) {
-              return {
-                status: 'DUPLICATE',
-                message: `Sir! ${originalInput} is already on list.`
-              };
+              return `DUPLICATE: Sir! ${originalInput} is already on list.`;
             }
 
             // Store grocery item
@@ -197,11 +194,7 @@ export class ListAgent implements IAgent {
               updatedAt: new Date()
             };
             await activeDb.collection('user_lists').insertOne(newEntry);
-            return {
-              status: 'SUCCESS',
-              message: `Successfully added "${originalInput}" to your grocery list.`,
-              item: newEntry
-            };
+            return `Successfully added "${originalInput}" to your grocery list.`;
           }
 
           // 2. Link Parsing & Dynamic Tagging (Coding Bucket & Movie Link Buckets)
@@ -270,11 +263,7 @@ Respond STRICTLY in JSON format with exactly three keys: "title", "summary", "ta
             };
             await activeDb.collection('user_lists').insertOne(newEntry);
             
-            return {
-              status: 'SUCCESS',
-              message: `Successfully tagged and cataloged link: "${cleanTitle}" with tags: ${finalTags.join(', ')}.`,
-              item: newEntry
-            };
+            return `Successfully tagged and cataloged link: "${cleanTitle}" with tags: ${finalTags.join(', ')}.`;
           } else {
             // General text addition for movies or other list items
             const newEntry: UserListEntry = {
@@ -291,11 +280,7 @@ Respond STRICTLY in JSON format with exactly three keys: "title", "summary", "ta
               updatedAt: new Date()
             };
             await activeDb.collection('user_lists').insertOne(newEntry);
-            return {
-              status: 'SUCCESS',
-              message: `Successfully added "${originalInput}" to your ${listType.replace('_', ' ')}.`,
-              item: newEntry
-            };
+            return `Successfully added "${originalInput}" to your ${listType.replace('_', ' ')}.`;
           }
         },
         {
@@ -381,17 +366,10 @@ Respond STRICTLY in JSON format with exactly three keys: "title", "summary", "ta
                 const idsToDelete = itemsToDelete.map(x => x.entryId);
                 await activeDb.collection('user_lists').deleteMany({ entryId: { $in: idsToDelete } });
                 
-                return {
-                  status: 'SUCCESS',
-                  message: `Grocery completed! Deleted the items you bought. Keeping active: ${args.itemsToKeepActive.join(', ')}.`,
-                  deletedItems: itemsToDelete.map(x => x.title)
-                };
+                return `Grocery completed! Deleted the items you bought: ${itemsToDelete.map(x => x.title).join(', ')}. Keeping active: ${args.itemsToKeepActive.join(', ')}.`;
               }
 
-              return {
-                status: 'SUCCESS',
-                message: `Grocery list updated. Kept active: ${args.itemsToKeepActive.join(', ')}.`
-              };
+              return `Grocery list updated. Kept active: ${args.itemsToKeepActive.join(', ')}.`;
             } else if (args.itemsToComplete && args.itemsToComplete.length > 0) {
               // Delete specific grocery items
               const deleteTargets = args.itemsToComplete.map(name => new RegExp(`^${name.trim()}$`, 'i'));
@@ -401,10 +379,7 @@ Respond STRICTLY in JSON format with exactly three keys: "title", "summary", "ta
                 title: { $in: deleteTargets }
               });
 
-              return {
-                status: 'SUCCESS',
-                message: `Grocery completed! Deleted ${res.deletedCount} items: ${args.itemsToComplete.join(', ')}.`
-              };
+              return `Grocery completed! Deleted items: ${args.itemsToComplete.join(', ')}.`;
             } else {
               // Complete all grocery items
               const res = await activeDb.collection('user_lists').deleteMany({
@@ -412,10 +387,7 @@ Respond STRICTLY in JSON format with exactly three keys: "title", "summary", "ta
                 listType: 'grocery',
                 status: 'active'
               });
-              return {
-                status: 'SUCCESS',
-                message: `Cleared all active grocery items! Deleted ${res.deletedCount} items.`
-              };
+              return `Cleared all active grocery items! Deleted ${res.deletedCount} items.`;
             }
           } else {
             // CODING / MOVIE BUCKET RULE: Mark completed
@@ -429,20 +401,14 @@ Respond STRICTLY in JSON format with exactly three keys: "title", "summary", "ta
                 },
                 { $set: { status: 'completed', updatedAt: new Date() } }
               );
-              return {
-                status: 'SUCCESS',
-                message: `Marked items as completed: ${args.itemsToComplete.join(', ')}.`
-              };
+              return `Marked items as completed: ${args.itemsToComplete.join(', ')}.`;
             } else {
               // Mark all completed
               await activeDb.collection('user_lists').updateMany(
                 { userId: context.userId, listType: args.listType, status: 'active' },
                 { $set: { status: 'completed', updatedAt: new Date() } }
               );
-              return {
-                status: 'SUCCESS',
-                message: `Marked all active items in ${args.listType.replace('_', ' ')} as completed.`
-              };
+              return `Marked all active items in ${args.listType.replace('_', ' ')} as completed.`;
             }
           }
         },
@@ -486,9 +452,8 @@ Memory Context:
 ${conversationContext || "_No previous context._"}
 
 URL MASKING & PRIVACY RULES:
-- All URLs in the user's query have been masked as placeholders like {{MASKED_URL_1}}, {{MASKED_URL_2}}, etc. to protect privacy.
-- You must treat these placeholders (e.g. {{MASKED_URL_1}}) exactly as if they are the actual URLs.
-- If the user says "add this link" or references a URL placeholder, pass that exact placeholder (e.g. {{MASKED_URL_1}}) as the "title" parameter when calling add_to_list. The tool will automatically unmask it programmatically. Do NOT try to guess or inventory the URL yourself.
+- YouTube and Instagram links are passed completely unmasked in plain text. You will see raw URLs (e.g., https://youtube.com/... or https://instagram.com/...) in the query. Pass these raw URLs directly to the add_to_list tool as the "title" parameter!
+- Other sensitive document URLs in the user's query may be masked as placeholders like {{MASKED_URL_1}}, {{MASKED_URL_2}}, etc. to protect privacy. If the user refers to a placeholder, pass that exact placeholder to the tool as the "title" parameter. The tool will automatically resolve/unmask it programmatically.
 
 LIST & DUPLICATE RULES:
 1. Groceries: 

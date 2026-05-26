@@ -102,6 +102,16 @@ export class ListAgent implements IAgent {
         }
       };
 
+      const unmaskString = (str: string): string => {
+        if (!str) return str;
+        const masks = (context as any).urlMasks || {};
+        let result = str;
+        for (const [key, value] of Object.entries(masks)) {
+          result = result.replace(new RegExp(key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g'), value as string);
+        }
+        return result;
+      };
+
       // ───────────────────────────────────────────────────────────────────────
       // TOOLS
       // ───────────────────────────────────────────────────────────────────────
@@ -109,7 +119,7 @@ export class ListAgent implements IAgent {
       const addTool = FunctionTool.from(
         async (args: { listType: 'grocery' | 'coding_bucket' | 'movie_bucket'; title: string; notes?: string }) => {
           const listType = args.listType;
-          const originalInput = args.title.trim();
+          const originalInput = unmaskString(args.title.trim());
           
           RuntimeEventBus.log('LIST_AGENT_TOOL', 'SYSTEM', `Adding item to ${listType}: "${originalInput}"`, context.traceId);
 
@@ -427,6 +437,11 @@ You have access to tools to add items/links, query lists, and complete/delete it
 
 Memory Context:
 ${conversationContext || "_No previous context._"}
+
+URL MASKING & PRIVACY RULES:
+- All URLs in the user's query have been masked as placeholders like {{MASKED_URL_1}}, {{MASKED_URL_2}}, etc. to protect privacy.
+- You must treat these placeholders (e.g. {{MASKED_URL_1}}) exactly as if they are the actual URLs.
+- If the user says "add this link" or references a URL placeholder, pass that exact placeholder (e.g. {{MASKED_URL_1}}) as the "title" parameter when calling add_to_list. The tool will automatically unmask it programmatically. Do NOT try to guess or inventory the URL yourself.
 
 LIST & DUPLICATE RULES:
 1. Groceries: 

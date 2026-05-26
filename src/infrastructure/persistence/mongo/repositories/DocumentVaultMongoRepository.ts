@@ -10,7 +10,7 @@ export interface DocumentVaultEntry {
 export class DocumentVaultMongoRepository {
   private collection: Collection<DocumentVaultEntry>;
 
-  constructor(db: Db) {
+  constructor(public db: Db) {
     this.collection = db.collection<DocumentVaultEntry>('user_vault');
   }
 

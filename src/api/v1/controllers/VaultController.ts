@@ -91,8 +91,9 @@ export class VaultController {
     this.router.get('/api', this.getDocuments.bind(this));
     this.router.post('/api', this.addDocument.bind(this));
     this.router.delete('/api/:id', this.deleteDocument.bind(this));
+    this.router.post('/api/bulk-delete', this.deleteBulk.bind(this));
 
-    log('ROUTES', 'All routes registered: GET /, POST /login, POST /logout, GET /api, POST /api, DELETE /api/:id');
+    log('ROUTES', 'All routes registered: GET /, POST /login, POST /logout, GET /api, POST /api, DELETE /api/:id, POST /api/bulk-delete');
   }
 
   // ── CUSTOM LOGIN PAGE ────────────────────────────────────────────────────
@@ -427,51 +428,105 @@ export class VaultController {
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --ink: #0a0a0f; --ink2: #3a3a4a; --ink3: #7a7a8a;
-      --surface: #f5f4f0; --card: #ffffff;
-      --border: rgba(10,10,15,0.10); --border-strong: rgba(10,10,15,0.22);
-      --accent: #2c2cff; --accent-dim: rgba(44,44,255,0.08); --accent-text: #1a1aee;
-      --danger: #d93025; --danger-dim: rgba(217,48,37,0.08);
-      --success: #137333; --success-dim: rgba(19,115,51,0.08);
-      --amber: #b06000; --amber-dim: rgba(176,96,0,0.08);
-      --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.05);
-      --shadow-lg: 0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
-      --radius: 10px; --radius-sm: 6px;
+      --ink: #ffffff; --ink2: rgba(255, 255, 255, 0.75); --ink3: rgba(255, 255, 255, 0.45);
+      --surface: radial-gradient(circle at 50% 50%, #151528 0%, #080810 100%);
+      --card: rgba(255,255,255,0.03);
+      --card-hover: rgba(255,255,255,0.06);
+      --border: rgba(255,255,255,0.08); --border-strong: rgba(255,255,255,0.18);
+      --accent: #5151ff; --accent-dim: rgba(81,81,255,0.12); --accent-text: #8c8cff;
+      --danger: #ff4a5a; --danger-dim: rgba(255,74,90,0.12);
+      --success: #00e676; --success-dim: rgba(0,230,118,0.12);
+      --amber: #ffd54f; --amber-dim: rgba(255,213,79,0.12);
+      --shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.6);
+      --radius: 16px; --radius-sm: 8px;
     }
     html { font-size: 16px; }
     body { font-family: 'DM Sans', sans-serif; background: var(--surface); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
-    .topbar { position: sticky; top: 0; z-index: 100; background: rgba(245,244,240,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0 2rem; height: 60px; display: flex; align-items: center; justify-content: space-between; }
-    .topbar-brand { display: flex; align-items: center; gap: 10px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; color: var(--ink); }
-    .brand-icon { width: 30px; height: 30px; background: var(--ink); border-radius: 7px; display: flex; align-items: center; justify-content: center; }
-    .brand-icon svg { color: white; }
+    .grid-bg {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image: linear-gradient(rgba(255,255,255,0.007) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,0.007) 1px, transparent 1px);
+      background-size: 30px 30px;
+      z-index: -2;
+      pointer-events: none;
+    }
+    .glow-orb {
+      position: fixed;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(81,81,255,0.06) 0%, transparent 70%);
+      border-radius: 50%;
+      top: -10%; right: -10%;
+      z-index: -1;
+      pointer-events: none;
+      filter: blur(50px);
+    }
+    .topbar { position: sticky; top: 0; z-index: 100; background: rgba(8,8,16,0.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); padding: 0 2rem; height: 60px; display: flex; align-items: center; justify-content: space-between; }
+    .topbar-brand { display: flex; align-items: center; gap: 10px; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; color: var(--ink); }
+    .brand-icon { width: 30px; height: 30px; background: var(--ink); color: #080810; border-radius: 8px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(255,255,255,0.25); }
+    .brand-icon svg { color: #080810; }
     .topbar-meta { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--ink3); letter-spacing: 0.04em; }
-    .page { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+    .page { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; position: relative; z-index: 10; }
     .hero { margin-bottom: 2.5rem; }
     .hero-label { font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.12em; color: var(--ink3); text-transform: uppercase; margin-bottom: 0.5rem; }
     .hero-title { font-family: 'Syne', sans-serif; font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
     .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 2rem; }
-    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.25rem; box-shadow: var(--shadow); }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.25rem; box-shadow: var(--shadow); backdrop-filter: blur(10px); }
     .stat-label { font-size: 0.72rem; font-family: 'DM Mono', monospace; letter-spacing: 0.06em; color: var(--ink3); text-transform: uppercase; margin-bottom: 0.4rem; }
     .stat-value { font-family: 'Syne', sans-serif; font-size: 1.7rem; font-weight: 700; line-height: 1; }
     .stat-value.accent { color: var(--accent-text); }
-    .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 1.5rem; overflow: hidden; }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 1.5rem; overflow: hidden; backdrop-filter: blur(10px); }
     .panel-header { padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-    .panel-title { font-family: 'Syne', sans-serif; font-size: 0.9rem; font-weight: 700; }
+    .panel-title { font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 700; }
     .panel-body { padding: 1.5rem; }
+    
+    .tabs-bar { display: flex; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 1px; margin-bottom: 1.5rem; }
+    .tab-btn { background: transparent; border: none; color: var(--ink3); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; padding: 10px 18px; cursor: pointer; border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: all 0.2s ease; position: relative; outline: none; }
+    .tab-btn:hover { color: var(--ink); background: var(--card-hover); }
+    .tab-btn.active { color: #ffffff; background: var(--accent-dim); }
+    .tab-btn.active::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--accent); border-radius: 3px 3px 0 0; }
+
+    .chk-container { display: inline-flex; align-items: center; cursor: pointer; user-select: none; }
+    .chk-container input { display: none; }
+    .chk-checkmark { width: 18px; height: 18px; border: 1px solid var(--border-strong); border-radius: 4px; background: rgba(0,0,0,0.3); display: inline-block; position: relative; transition: all 0.15s ease; }
+    .chk-container:hover .chk-checkmark { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(81,81,255,0.2); }
+    .chk-container input:checked + .chk-checkmark { background: var(--accent); border-color: var(--accent); }
+    .chk-container input:checked + .chk-checkmark::after { content: ''; position: absolute; left: 6px; top: 2px; width: 4px; height: 9px; border: solid #ffffff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+    .bulk-drawer { position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%); background: rgba(15,15,30,0.9); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border: 1px solid var(--border-strong); border-radius: 30px; padding: 12px 24px; display: flex; align-items: center; gap: 16px; box-shadow: var(--shadow-lg); z-index: 1000; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .bulk-drawer.active { bottom: 24px; }
+    .bulk-text { font-size: 0.82rem; font-family: 'DM Mono', monospace; color: var(--ink2); }
+    .btn-bulk-delete { background: var(--danger); color: #fff; border: none; border-radius: 20px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.78rem; padding: 8px 16px; cursor: pointer; transition: transform 0.12s, background 0.15s; }
+    .btn-bulk-delete:hover { background: #ff2a3a; transform: translateY(-1px); }
+    .btn-bulk-delete:active { transform: translateY(0); }
+
+    .dotted-add-card { border: 2px dashed var(--border-strong); border-radius: var(--radius); padding: 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; background: transparent; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-top: 1.5rem; min-height: 80px; position: relative; overflow: hidden; }
+    .dotted-add-card:hover, .dotted-add-card.expanded { border-style: solid; border-color: var(--accent); background: var(--card); cursor: default; }
+    .dotted-add-card .placeholder-content { display: flex; align-items: center; gap: 10px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; color: var(--ink3); transition: opacity 0.2s ease; }
+    .dotted-add-card:hover .placeholder-content, .dotted-add-card.expanded .placeholder-content { opacity: 0; pointer-events: none; position: absolute; }
+    .dotted-add-card .form-content { width: 100%; opacity: 0; pointer-events: none; display: none; transition: opacity 0.3s ease; }
+    .dotted-add-card:hover .form-content, .dotted-add-card.expanded .form-content { display: block; opacity: 1; pointer-events: auto; }
+    .dotted-add-card .form-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; width: 100%; }
+    .dotted-add-card .bucket-type-row { display: flex; gap: 16px; margin-bottom: 12px; align-items: center; }
+    .bucket-type-row span { font-size: 0.72rem; font-family: 'DM Mono', monospace; color: var(--ink3); text-transform: uppercase; }
+    .bucket-radio { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--ink2); }
+    .bucket-radio input { accent-color: var(--accent); }
+
     .form-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
     .field label { display: block; font-size: 0.75rem; font-weight: 500; color: var(--ink2); margin-bottom: 6px; }
-    .field input { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 0.875rem; color: var(--ink); background: var(--surface); outline: none; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s; }
-    .field input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(44,44,255,0.12); }
+    .field input { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 0.875rem; color: var(--ink); background: rgba(0,0,0,0.3); outline: none; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s; }
+    .field input:focus { border-color: var(--accent); background: rgba(0,0,0,0.5); box-shadow: 0 0 0 3px rgba(81,81,255,0.25); }
     .field input::placeholder { color: var(--ink3); }
-    .btn { height: 40px; padding: 0 20px; border: none; border-radius: var(--radius-sm); font-family: 'Syne', sans-serif; font-weight: 600; font-size: 0.82rem; cursor: pointer; transition: transform 0.12s, opacity 0.15s; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+    .btn { height: 40px; padding: 0 20px; border: none; border-radius: var(--radius-sm); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: transform 0.12s, opacity 0.15s; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
     .btn:active { transform: scale(0.97); }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
-    .btn-primary { background: var(--ink); color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #1a1a2e; }
-    .btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(217,48,37,0.18); padding: 0 12px; height: 32px; font-size: 0.77rem; }
-    .btn-danger:hover:not(:disabled) { background: rgba(217,48,37,0.15); }
+    .btn-primary { background: #ffffff; color: #080810; box-shadow: 0 4px 12px rgba(255,255,255,0.15); }
+    .btn-primary:hover:not(:disabled) { background: #e8e8ff; }
+    .btn-danger { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(255,74,90,0.18); padding: 0 12px; height: 32px; font-size: 0.77rem; border-radius: 6px; }
+    .btn-danger:hover:not(:disabled) { background: rgba(255,74,90,0.22); }
     #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
-    .toast { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: var(--radius); font-size: 0.85rem; font-weight: 500; box-shadow: var(--shadow-lg); border: 1px solid var(--border); min-width: 240px; animation: slideIn 0.25s ease; background: var(--card); }
+    .toast { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: var(--radius); font-size: 0.85rem; font-weight: 500; box-shadow: var(--shadow-lg); border: 1px solid var(--border); min-width: 240px; animation: slideIn 0.25s ease; background: rgba(15,15,30,0.85); backdrop-filter: blur(10px); }
     .toast.success { border-left: 3px solid var(--success); }
     .toast.error { border-left: 3px solid var(--danger); }
     .toast-icon { font-size: 1rem; }
@@ -481,13 +536,14 @@ export class VaultController {
     @keyframes fadeOut { to { opacity:0; transform:translateX(10px); } }
     .doc-table-wrap { overflow-x: auto; }
     .doc-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    .doc-table th { font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .doc-table th { font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.15); }
     .doc-table td { padding: 1rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
     .doc-table tbody tr { transition: background 0.1s; }
-    .doc-table tbody tr:hover { background: rgba(44,44,255,0.025); }
+    .doc-table tbody tr:hover { background: rgba(255,255,255,0.015); }
     .doc-table tbody tr:last-child td { border-bottom: none; }
     .doc-name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
-    .doc-icon { width: 28px; height: 28px; background: var(--accent-dim); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem; font-family: 'DM Mono', monospace; color: var(--accent-text); font-weight: 500; }
+    .doc-icon { width: 28px; height: 28px; background: var(--accent-dim); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem; font-family: 'DM Mono', monospace; color: var(--accent-text); font-weight: 600; text-transform: uppercase; }
+    .doc-icon.secure { background: rgba(255,213,79,0.12); color: #ffd54f; }
     .doc-link-cell a { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--accent-text); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
     .doc-link-cell a:hover { text-decoration: underline; }
     .doc-id { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink3); }
@@ -496,33 +552,40 @@ export class VaultController {
     .state-box-title { font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 600; color: var(--ink2); margin-bottom: 0.25rem; }
     .state-box-sub { font-size: 0.8rem; color: var(--ink3); }
     .skeleton-row td { padding: 1rem; border-bottom: 1px solid var(--border); }
-    .skel { height: 14px; border-radius: 4px; background: linear-gradient(90deg, var(--border) 25%, rgba(200,200,210,0.3) 50%, var(--border) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+    .skel { height: 14px; border-radius: 4px; background: linear-gradient(90deg, var(--border) 25%, rgba(255,255,255,0.1) 50%, var(--border) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
     @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.68rem; font-family: 'DM Mono', monospace; letter-spacing: 0.04em; }
     .badge-success { background: var(--success-dim); color: var(--success); }
     .badge-amber { background: var(--amber-dim); color: var(--amber); }
     .search-wrap { position: relative; }
     .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--ink3); pointer-events: none; }
-    #searchInput { height: 36px; padding: 0 12px 0 34px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--ink); background: var(--surface); outline: none; width: 200px; transition: border-color 0.15s, width 0.2s ease; }
-    #searchInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(44,44,255,0.10); width: 260px; background: #fff; }
+    #searchInput { height: 36px; padding: 0 12px 0 34px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--ink); background: rgba(0,0,0,0.2); outline: none; width: 200px; transition: border-color 0.15s, width 0.2s ease; }
+    #searchInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(81,81,255,0.15); width: 260px; background: rgba(0,0,0,0.4); }
+
+    .secure-value-wrap { display: flex; align-items: center; gap: 8px; }
+    .eye-btn { background: transparent; border: none; color: var(--ink3); cursor: pointer; font-size: 0.9rem; padding: 2px 6px; border-radius: 4px; transition: all 0.15s; outline: none; }
+    .eye-btn:hover { color: var(--ink); background: var(--card-hover); }
 
     @media (max-width: 640px) {
       .form-grid { grid-template-columns: 1fr; }
-      .stats-row { grid-template-columns: 1fr 1fr; }
+      .stats-row { grid-template-columns: 1fr; }
       .hero-title { font-size: 1.6rem; }
       .topbar { padding: 0 1rem; }
       .page { padding: 1.5rem 1rem 4rem; }
+      .dotted-add-card .form-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
+<div class="grid-bg"></div>
+<div class="glow-orb"></div>
 
 <div id="toast-container"></div>
 
 <div class="topbar">
   <div class="topbar-brand">
     <div class="brand-icon">
-      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
         <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
     </div>
@@ -530,7 +593,7 @@ export class VaultController {
   </div>
   <div style="display: flex; align-items: center; gap: 15px;">
     <span class="topbar-meta" id="vaultTime">—</span>
-    <button onclick="handleLogout()" class="btn" style="height: 28px; padding: 0 10px; font-size: 0.72rem; background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(217,48,37,0.15); border-radius: 4px; font-family: 'Syne', sans-serif;">Logout</button>
+    <button onclick="handleLogout()" class="btn" style="height: 28px; padding: 0 10px; font-size: 0.72rem; background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(255,74,90,0.15); border-radius: 4px; font-family: 'Syne', sans-serif;">Logout</button>
   </div>
 </div>
 
@@ -542,7 +605,7 @@ export class VaultController {
 
   <div class="stats-row">
     <div class="stat-card">
-      <p class="stat-label">Total Docs</p>
+      <p class="stat-label">Total Entries</p>
       <p class="stat-value accent" id="statTotal">—</p>
     </div>
     <div class="stat-card">
@@ -552,52 +615,84 @@ export class VaultController {
       </p>
     </div>
     <div class="stat-card">
-      <p class="stat-label">Last Updated</p>
+      <p class="stat-label">Last Sync</p>
       <p class="stat-value" style="font-size:0.88rem;font-family:'DM Mono',monospace;padding-top:6px;color:var(--ink2);" id="statUpdated">—</p>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-header"><span class="panel-title">Add Document</span></div>
-    <div class="panel-body">
-      <div class="form-grid">
-        <div class="field">
-          <label for="docName">Document name</label>
-          <input type="text" id="docName" placeholder="e.g. Aadhaar Card" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="docLink">Secure link</label>
-          <input type="url" id="docLink" placeholder="https://drive.google.com/…">
-        </div>
-        <button class="btn btn-primary" id="saveBtn" onclick="addDocument()">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Save
-        </button>
-      </div>
-    </div>
+  <div class="tabs-bar">
+    <button class="tab-btn active" id="tab-vault" onclick="switchTab('vault')">Documents Vault</button>
+    <button class="tab-btn" id="tab-buckets" onclick="switchTab('buckets')">Buckets</button>
+    <button class="tab-btn" id="tab-personal" onclick="switchTab('personal')">Personal Info</button>
   </div>
 
   <div class="panel">
     <div class="panel-header">
-      <span class="panel-title">Documents</span>
+      <span class="panel-title" id="tablePanelTitle">Documents</span>
       <div class="search-wrap">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="searchInput" placeholder="Filter documents…" oninput="renderTable()">
+        <input type="text" id="searchInput" placeholder="Filter current view…" oninput="renderTable()">
       </div>
     </div>
     <div class="doc-table-wrap">
       <table class="doc-table">
-        <thead>
-          <tr><th>Name</th><th>Link</th><th>ID</th><th></th></tr>
+        <thead id="docTableHeader">
+          <tr>
+            <th style="width: 40px;">
+              <label class="chk-container">
+                <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+                <span class="chk-checkmark"></span>
+              </label>
+            </th>
+            <th>Name</th><th>Link</th><th>ID</th><th style="text-align: right;">Action</th>
+          </tr>
         </thead>
         <tbody id="docTableBody">
-          <tr class="skeleton-row"><td><div class="skel" style="width:60%"></div></td><td><div class="skel" style="width:80%"></div></td><td><div class="skel" style="width:90%"></div></td><td></td></tr>
-          <tr class="skeleton-row"><td><div class="skel" style="width:45%"></div></td><td><div class="skel" style="width:70%"></div></td><td><div class="skel" style="width:90%"></div></td><td></td></tr>
-          <tr class="skeleton-row"><td><div class="skel" style="width:55%"></div></td><td><div class="skel" style="width:60%"></div></td><td><div class="skel" style="width:90%"></div></td><td></td></tr>
+          <tr class="skeleton-row"><td></td><td><div class="skel" style="width:60%"></div></td><td><div class="skel" style="width:80%"></div></td><td><div class="skel" style="width:90%"></div></td><td></td></tr>
+          <tr class="skeleton-row"><td></td><td><div class="skel" style="width:45%"></div></td><td><div class="skel" style="width:70%"></div></td><td><div class="skel" style="width:90%"></div></td><td></td></tr>
+          <tr class="skeleton-row"><td></td><td><div class="skel" style="width:55%"></div></td><td><div class="skel" style="width:60%"></div></td><td><div class="skel" style="width:90%"></div></td><td></td></tr>
         </tbody>
       </table>
     </div>
   </div>
+
+  <div class="dotted-add-card" id="dottedAddCard">
+    <div class="placeholder-content">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span>Scroll to bottom &amp; hover to add new entry</span>
+    </div>
+    <div class="form-content">
+      <div class="bucket-type-row" id="bucketTypeSelectorRow" style="display: none;">
+        <span>Select Bucket:</span>
+        <label class="bucket-radio">
+          <input type="radio" name="bucketType" value="coding_bucket" checked>
+          💻 Coding
+        </label>
+        <label class="bucket-radio">
+          <input type="radio" name="bucketType" value="movie_bucket">
+          🎬 Movie
+        </label>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label id="addNameLabel" for="addName">Document Name</label>
+          <input type="text" id="addName" placeholder="e.g. Aadhaar Card">
+        </div>
+        <div class="field">
+          <label id="addValueLabel" for="addValue">Secure Link</label>
+          <input type="text" id="addValue" placeholder="https://drive.google.com/…">
+        </div>
+        <button class="btn btn-primary" id="addSaveBtn" onclick="addEntryFromDottedCard()">Save Entry</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bulk-drawer" id="bulkDrawer">
+    <span class="bulk-text"><span id="bulkCount">0</span> selected</span>
+    <button class="btn-bulk-delete" id="bulkDeleteBtn" onclick="deleteBulkSelected()">Delete Selected</button>
+    <button onclick="selectedIds=[];document.querySelectorAll('.item-chk').forEach(c=>c.checked=false);document.getElementById('selectAll').checked=false;updateBulkDrawer();" style="background:transparent;border:none;color:var(--ink3);cursor:pointer;font-size:1rem;padding:4px;">✕</button>
+  </div>
+
 </div>
 
 <script>
@@ -617,18 +712,20 @@ window.addEventListener('error', function(e) {
   dbg('ERR', 'GLOBAL', 'Uncaught JS error: ' + e.message, {
     file: e.filename, line: e.lineno, col: e.colno
   });
-  if (e.error && e.error.stack) dbg('ERR', 'STACK', e.error.stack);
 });
 window.addEventListener('unhandledrejection', function(e) {
   const reason = e.reason;
   dbg('ERR', 'PROMISE', 'Unhandled rejection: ' + (reason ? (reason.message || String(reason)) : 'unknown'));
-  if (reason && reason.stack) dbg('ERR', 'STACK', reason.stack);
 });
 
 // ══════════════════════════════════════════════════════════
 // APP STATE
 // ══════════════════════════════════════════════════════════
 let allDocs = [];
+let allLists = [];
+let activeTab = 'vault'; // 'vault', 'buckets', 'personal'
+let selectedIds = [];
+let isInputFocused = false;
 
 function safeText(str) {
   const d = document.createElement('div');
@@ -638,7 +735,7 @@ function safeText(str) {
 
 function initials(name) {
   if (!name || typeof name !== 'string') return '?';
-  const parts = name.trim().split(/\s+/).slice(0, 2);
+  const parts = name.trim().split(/\\s+/).slice(0, 2);
   return parts.map(w => w && w[0] ? w[0].toUpperCase() : '').join('');
 }
 
@@ -656,8 +753,16 @@ function toast(msg, type = 'success') {
 }
 
 function updateStats() {
-  dbg('INFO', 'STATS', 'Updating stats, doc count=' + allDocs.length);
-  document.getElementById('statTotal').textContent = allDocs.length;
+  dbg('INFO', 'STATS', 'Updating stats for active tab=' + activeTab);
+  let total = 0;
+  if (activeTab === 'vault') {
+    total = allDocs.filter(d => (d.link || '').startsWith('http')).length;
+  } else if (activeTab === 'personal') {
+    total = allDocs.filter(d => !(d.link || '').startsWith('http')).length;
+  } else if (activeTab === 'buckets') {
+    total = allLists.length;
+  }
+  document.getElementById('statTotal').textContent = total;
   const now = new Date();
   document.getElementById('statUpdated').textContent =
     now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -673,81 +778,347 @@ async function handleLogout() {
   }
 }
 
+// ── TABS LOGIC ─────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  dbg('INFO', 'TAB', 'Switching to tab: ' + tab);
+
+  // Sync tab active states
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  // Update header text based on active tab
+  document.getElementById('tablePanelTitle').textContent = 
+    tab === 'vault' ? 'Secure Documents' : tab === 'personal' ? 'Personal Info (Text)' : 'Buckets & Lists';
+
+  // Clear selections
+  selectedIds = [];
+  const selectAllChk = document.getElementById('selectAll');
+  if (selectAllChk) selectAllChk.checked = false;
+  updateBulkDrawer();
+
+  // Refresh add card fields based on tab
+  updateAddCardFields();
+
+  // Render stats & table
+  updateStats();
+  renderTable();
+}
+
+function updateAddCardFields() {
+  const card = document.getElementById('dottedAddCard');
+  if (!card) return;
+
+  const bucketSelectRow = document.getElementById('bucketTypeSelectorRow');
+  const nameLabel = document.getElementById('addNameLabel');
+  const nameInput = document.getElementById('addName');
+  const valueLabel = document.getElementById('addValueLabel');
+  const valueInput = document.getElementById('addValue');
+
+  if (activeTab === 'buckets') {
+    bucketSelectRow.style.display = 'flex';
+    nameLabel.textContent = 'Bucket Title';
+    nameInput.placeholder = 'e.g. Learn LlamaIndex';
+    valueLabel.textContent = 'Link or Notes';
+    valueInput.placeholder = 'e.g. https://github.com/run-llama/LlamaIndex';
+  } else if (activeTab === 'personal') {
+    bucketSelectRow.style.display = 'none';
+    nameLabel.textContent = 'Credential / Secret Title';
+    nameInput.placeholder = 'e.g. Email Password';
+    valueLabel.textContent = 'Value / Password';
+    valueInput.placeholder = 'e.g. mySecret123!';
+  } else { // 'vault'
+    bucketSelectRow.style.display = 'none';
+    nameLabel.textContent = 'Document Name';
+    nameInput.placeholder = 'e.g. Aadhaar Card';
+    valueLabel.textContent = 'Secure Link';
+    valueInput.placeholder = 'https://drive.google.com/…';
+  }
+}
+
+// ── CHECKBOX AND BULK ACTIONS ──────────────────────────────
+function toggleItemSelect(id, chk) {
+  if (chk.checked) {
+    if (!selectedIds.includes(id)) selectedIds.push(id);
+  } else {
+    selectedIds = selectedIds.filter(x => x !== id);
+  }
+
+  // Sync selectAll master state
+  const chks = document.querySelectorAll('.item-chk');
+  const allChecked = chks.length > 0 && Array.from(chks).every(c => c.checked);
+  document.getElementById('selectAll').checked = allChecked;
+
+  updateBulkDrawer();
+}
+
+function toggleSelectAll(masterChk) {
+  const chks = document.querySelectorAll('.item-chk');
+  chks.forEach(chk => {
+    chk.checked = masterChk.checked;
+    const id = chk.getAttribute('data-id');
+    if (masterChk.checked) {
+      if (!selectedIds.includes(id)) selectedIds.push(id);
+    } else {
+      selectedIds = selectedIds.filter(x => x !== id);
+    }
+  });
+
+  updateBulkDrawer();
+}
+
+function updateBulkDrawer() {
+  const drawer = document.getElementById('bulkDrawer');
+  const countSpan = document.getElementById('bulkCount');
+  if (!drawer || !countSpan) return;
+
+  if (selectedIds.length > 0) {
+    countSpan.textContent = selectedIds.length;
+    drawer.classList.add('active');
+  } else {
+    drawer.classList.remove('active');
+  }
+}
+
+async function deleteBulkSelected() {
+  if (selectedIds.length === 0) return;
+  if (!confirm('Delete all ' + selectedIds.length + ' selected entries? This cannot be undone.')) return;
+
+  const btn = document.getElementById('bulkDeleteBtn');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+
+  const type = activeTab === 'buckets' ? 'list' : 'vault';
+  dbg('NET', 'BULK-DELETE', 'Starting bulk delete of ' + selectedIds.length + ' entries of type ' + type);
+
+  try {
+    const res = await fetch('/vault/api/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: selectedIds, type })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Bulk deletion failed.');
+    }
+
+    toast('Successfully deleted ' + selectedIds.length + ' entries.');
+    
+    // Remove local values
+    if (activeTab === 'buckets') {
+      allLists = allLists.filter(x => !selectedIds.includes(x.entryId));
+    } else {
+      allDocs = allDocs.filter(x => !selectedIds.includes(x.docId));
+    }
+
+    selectedIds = [];
+    updateBulkDrawer();
+    updateStats();
+    renderTable();
+
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Delete Selected';
+  }
+}
+
+// ── EYE SECRET VISIBILITY ──────────────────────────────────
+function toggleSecretVisibility(btn) {
+  const wrap = btn.closest('.secure-value-wrap');
+  const masked = wrap.querySelector('.secure-value.masked');
+  const plain = wrap.querySelector('.secure-value.plain');
+  if (masked.style.display === 'none') {
+    masked.style.display = 'inline';
+    plain.style.display = 'none';
+    btn.textContent = '👁';
+  } else {
+    masked.style.display = 'none';
+    plain.style.display = 'inline';
+    btn.textContent = '🙈';
+  }
+}
+
 // ── RENDER TABLE ───────────────────────────────────────────
 function renderTable() {
   const query = document.getElementById('searchInput').value.toLowerCase().trim();
-  dbg('INFO', 'RENDER', 'renderTable() called, query="' + query + '", allDocs.length=' + allDocs.length);
-
-  if (!Array.isArray(allDocs)) {
-    dbg('ERR', 'RENDER', 'allDocs is not an array!', typeof allDocs);
-    return;
-  }
-
-  const filtered = query
-    ? allDocs.filter(d => {
-        if (!d || !d.name || !d.link) {
-          dbg('WARN', 'RENDER', 'Doc missing name/link', d);
-          return false;
-        }
-        return d.name.toLowerCase().includes(query) || d.link.toLowerCase().includes(query);
-      })
-    : allDocs;
-
-  dbg('INFO', 'RENDER', 'Filtered count=' + filtered.length);
+  dbg('INFO', 'RENDER', 'renderTable() called, query="' + query + '"');
 
   const tbody = document.getElementById('docTableBody');
-  if (!tbody) {
-    dbg('ERR', 'RENDER', 'docTableBody element NOT FOUND in DOM!');
-    return;
+  if (!tbody) return;
+
+  // 1. Get filtered list of items based on activeTab
+  let items = [];
+  if (activeTab === 'vault') {
+    items = allDocs.filter(d => {
+      const link = d.link || '';
+      return link.startsWith('http://') || link.startsWith('https://');
+    });
+  } else if (activeTab === 'personal') {
+    items = allDocs.filter(d => {
+      const link = d.link || '';
+      return !link.startsWith('http://') && !link.startsWith('https://');
+    });
+  } else if (activeTab === 'buckets') {
+    items = allLists;
   }
 
-  if (filtered.length === 0) {
-    dbg('INFO', 'RENDER', 'No docs to show — rendering empty state');
-    tbody.innerHTML = '<tr><td colspan="4"><div class="state-box">' +
+  // 2. Filter by search query
+  if (query) {
+    items = items.filter(item => {
+      const name = (item.name || item.title || '').toLowerCase();
+      const val = (item.link || item.metadata?.rawUrl || '').toLowerCase();
+      return name.includes(query) || val.includes(query);
+    });
+  }
+
+  // Update master selectAll sync
+  const selectAllChk = document.getElementById('selectAll');
+  if (selectAllChk) {
+    const allChecked = items.length > 0 && items.every(item => selectedIds.includes(item.docId || item.entryId));
+    selectAllChk.checked = allChecked;
+  }
+
+  // 3. Render table headers based on activeTab
+  const thead = document.getElementById('docTableHeader');
+  if (thead) {
+    if (activeTab === 'buckets') {
+      thead.innerHTML = '<tr>' +
+        '<th style="width: 40px;">' +
+          '<label class="chk-container">' +
+            '<input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">' +
+            '<span class="chk-checkmark"></span>' +
+          '</label>' +
+        '</th>' +
+        '<th>Title</th>' +
+        '<th>Bucket</th>' +
+        '<th>Link / Notes</th>' +
+        '<th style="text-align: right;">Action</th>' +
+      '</tr>';
+    } else if (activeTab === 'personal') {
+      thead.innerHTML = '<tr>' +
+        '<th style="width: 40px;">' +
+          '<label class="chk-container">' +
+            '<input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">' +
+            '<span class="chk-checkmark"></span>' +
+          '</label>' +
+        '</th>' +
+        '<th>Credential Name</th>' +
+        '<th>Value / Password</th>' +
+        '<th>ID</th>' +
+        '<th style="text-align: right;">Action</th>' +
+      '</tr>';
+    } else { // 'vault'
+      thead.innerHTML = '<tr>' +
+        '<th style="width: 40px;">' +
+          '<label class="chk-container">' +
+            '<input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">' +
+            '<span class="chk-checkmark"></span>' +
+          '</label>' +
+        '</th>' +
+        '<th>Name</th>' +
+        '<th>Link</th>' +
+        '<th>ID</th>' +
+        '<th style="text-align: right;">Action</th>' +
+      '</tr>';
+    }
+  }
+
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="state-box">' +
       '<div class="state-box-icon">🗂</div>' +
       '<p class="state-box-title">' + (query ? 'No results' : 'No documents yet') + '</p>' +
-      '<p class="state-box-sub">' + (query ? 'Try a different search term.' : 'Add your first document above.') + '</p>' +
+      '<p class="state-box-sub">' + (query ? 'Try a different search term.' : 'Use the box below to add your first entry.') + '</p>' +
       '</div></td></tr>';
     return;
   }
 
-  dbg('INFO', 'RENDER', 'Building rows for ' + filtered.length + ' docs');
-
   try {
-    const rows = filtered.map((doc, i) => {
-      dbg('INFO', 'RENDER', 'Row ' + i + ': docId=' + (doc.docId || 'MISSING') + ' name=' + (doc.name || 'MISSING'));
+    const rows = items.map(item => {
+      const id = item.docId || item.entryId;
+      const isChecked = selectedIds.includes(id) ? 'checked' : '';
 
-      if (!doc.docId) dbg('WARN', 'RENDER', 'Doc at index ' + i + ' has no docId!', doc);
-      if (!doc.name)  dbg('WARN', 'RENDER', 'Doc at index ' + i + ' has no name!', doc);
-      if (!doc.link)  dbg('WARN', 'RENDER', 'Doc at index ' + i + ' has no link!', doc);
+      if (activeTab === 'buckets') {
+        const title = safeText(item.title || '(no title)');
+        const link = safeText(item.metadata?.rawUrl || '');
+        const bType = item.listType === 'movie_bucket' ? '🎬 Movie' : '💻 Coding';
+        const bClass = item.listType === 'movie_bucket' ? 'badge-amber' : 'badge-success';
+        const abbr = initials(item.title || '');
 
-      const safeName = safeText(doc.name  || '(no name)');
-      const safeLink = safeText(doc.link  || '');
-      const safeId   = safeText(doc.docId || '');
-      const abbr     = initials(doc.name || '');
+        return '<tr>' +
+          '<td>' +
+            '<label class="chk-container">' +
+              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(\'' + id + '\', this)">' +
+              '<span class="chk-checkmark"></span>' +
+            '</label>' +
+          '</td>' +
+          '<td><div class="doc-name"><div class="doc-icon">' + safeText(abbr) + '</div>' + title + '</div></td>' +
+          '<td><span class="badge ' + bClass + '">' + bType + '</span></td>' +
+          '<td class="doc-link-cell">' +
+            (link ? '<a href="' + link + '" target="_blank" rel="noopener noreferrer">Open Link<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>' : '<span class="doc-id">None</span>') +
+          '</td>' +
+          '<td style="text-align: right;"><button class="btn btn-danger" onclick="deleteItem(\'' + id + '\', this)">Remove</button></td>' +
+        '</tr>';
+      } else if (activeTab === 'personal') {
+        const title = safeText(item.name || '(no name)');
+        const secret = safeText(item.link || '');
+        const abbr = initials(item.name || '');
 
-      let hostLabel = '';
-      try {
-        hostLabel = new URL(doc.link).hostname.replace('www.', '').split('.')[0];
-        dbg('INFO', 'RENDER', 'Row ' + i + ': parsed hostname="' + hostLabel + '"');
-      } catch(urlErr) {
-        dbg('WARN', 'RENDER', 'Row ' + i + ': URL parse failed for "' + doc.link + '"', urlErr.message);
-        hostLabel = 'Open';
+        return '<tr>' +
+          '<td>' +
+            '<label class="chk-container">' +
+              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(\'' + id + '\', this)">' +
+              '<span class="chk-checkmark"></span>' +
+            '</label>' +
+          '</td>' +
+          '<td><div class="doc-name"><div class="doc-icon secure">' + safeText(abbr) + '</div>' + title + '</div></td>' +
+          '<td>' +
+            '<div class="secure-value-wrap">' +
+              '<span class="secure-value masked">••••••••</span>' +
+              '<span class="secure-value plain" style="display: none; font-family: \'DM Mono\', monospace;">' + secret + '</span>' +
+              '<button class="eye-btn" onclick="toggleSecretVisibility(this)" title="Toggle Visibility">👁</button>' +
+            '</div>' +
+          '</td>' +
+          '<td><span class="doc-id">' + id.slice(0, 8) + '…</span></td>' +
+          '<td style="text-align: right;"><button class="btn btn-danger" onclick="deleteItem(\'' + id + '\', this)">Remove</button></td>' +
+        '</tr>';
+      } else { // 'vault'
+        const name = safeText(item.name || '(no name)');
+        const link = safeText(item.link || '');
+        const abbr = initials(item.name || '');
+
+        let hostLabel = 'Open';
+        try {
+          hostLabel = new URL(item.link).hostname.replace('www.', '').split('.')[0];
+        } catch {
+          hostLabel = 'Open';
+        }
+
+        return '<tr>' +
+          '<td>' +
+            '<label class="chk-container">' +
+              '<input type="checkbox" class="item-chk" data-id="' + id + '" ' + isChecked + ' onchange="toggleItemSelect(\'' + id + '\', this)">' +
+              '<span class="chk-checkmark"></span>' +
+            '</label>' +
+          '</td>' +
+          '<td><div class="doc-name"><div class="doc-icon">' + safeText(abbr) + '</div>' + name + '</div></td>' +
+          '<td class="doc-link-cell">' +
+            '<a href="' + link + '" target="_blank" rel="noopener noreferrer">' +
+              safeText(hostLabel) +
+              '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
+            '</a>' +
+          '</td>' +
+          '<td><span class="doc-id">' + id.slice(0, 8) + '…</span></td>' +
+          '<td style="text-align: right;"><button class="btn btn-danger" onclick="deleteItem(\'' + id + '\', this)">Remove</button></td>' +
+        '</tr>';
       }
-
-      return '<tr>' +
-        '<td><div class="doc-name"><div class="doc-icon">' + safeText(abbr) + '</div>' + safeName + '</div></td>' +
-        '<td class="doc-link-cell"><a href="' + safeLink + '" target="_blank" rel="noopener noreferrer">' +
-          safeText(hostLabel || 'Open') +
-          '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
-        '</a></td>' +
-        '<td><span class="doc-id">' + safeId.slice(0, 8) + '…</span></td>' +
-        '<td><button class="btn btn-danger" onclick="deleteDoc(\\\'' + safeId + '\\\', this)">Remove</button></td>' +
-      '</tr>';
     });
 
     tbody.innerHTML = rows.join('');
-    dbg('INFO', 'RENDER', 'Table innerHTML set successfully, rows rendered=' + rows.length);
   } catch(renderErr) {
     dbg('ERR', 'RENDER', 'Exception during row building: ' + renderErr.message, renderErr.stack);
   }
@@ -763,70 +1134,36 @@ async function fetchDocs() {
     const res = await fetch(url, { credentials: 'same-origin' });
     const fetchMs = (performance.now() - fetchStart).toFixed(0);
 
-    dbg('NET', 'FETCH', 'Response received in ' + fetchMs + 'ms', {
-      status: res.status,
-      statusText: res.statusText,
-      ok: res.ok,
-      headers: {
-        contentType: res.headers.get('content-type'),
-        cacheControl: res.headers.get('cache-control')
-      }
-    });
-
     if (!res.ok) {
       const errText = await res.text().catch(() => '(unreadable body)');
-      dbg('ERR', 'FETCH', 'Non-OK response body: ' + errText);
       throw new Error('HTTP ' + res.status + ' — ' + errText.slice(0, 120));
     }
 
     const rawText = await res.text();
-    dbg('NET', 'FETCH', 'Raw response body (first 300 chars): ' + rawText.slice(0, 300));
-    dbg('NET', 'FETCH', 'Response body length: ' + rawText.length);
-
     let parsed;
     try {
       parsed = JSON.parse(rawText);
-      dbg('NET', 'FETCH', 'JSON parsed OK. Type=' + typeof parsed + ', isArray=' + Array.isArray(parsed));
     } catch (jsonErr) {
-      dbg('ERR', 'FETCH', 'JSON.parse FAILED: ' + jsonErr.message);
-      dbg('ERR', 'FETCH', 'Raw text that failed to parse: ' + rawText.slice(0, 500));
       throw new Error('Invalid JSON from /vault/api: ' + jsonErr.message);
     }
 
-    if (!Array.isArray(parsed)) {
-      dbg('ERR', 'FETCH', 'Expected array but got: ' + typeof parsed, parsed);
-      throw new Error('Server returned non-array: ' + JSON.stringify(parsed).slice(0, 100));
-    }
+    allDocs = parsed.docs || [];
+    allLists = parsed.lists || [];
 
-    dbg('INFO', 'FETCH', 'Docs loaded: count=' + parsed.length);
-    if (parsed.length > 0) {
-      dbg('INFO', 'FETCH', 'First doc shape (keys): ' + Object.keys(parsed[0]).join(', '));
-      dbg('INFO', 'FETCH', 'First doc sample', {
-        docId: parsed[0].docId,
-        name: parsed[0].name,
-        linkLength: parsed[0].link ? parsed[0].link.length : 'N/A'
-      });
-    }
-
-    allDocs = parsed;
-    dbg('INFO', 'FETCH', 'allDocs assigned, length=' + allDocs.length);
+    dbg('INFO', 'FETCH', 'Data loaded, docs count=' + allDocs.length + ', lists count=' + allLists.length);
 
     updateStats();
-    dbg('INFO', 'FETCH', 'Stats updated');
-
     renderTable();
-    dbg('INFO', 'FETCH', 'renderTable() completed');
 
     document.getElementById('statStatus').className = 'badge badge-success';
     document.getElementById('statStatus').textContent = '● Online';
 
   } catch (err) {
     dbg('ERR', 'FETCH', 'fetchDocs FAILED: ' + err.message);
-    if (err.stack) dbg('ERR', 'FETCH', 'Stack: ' + err.stack);
     document.getElementById('statStatus').className = 'badge badge-amber';
     document.getElementById('statStatus').textContent = '● Degraded';
     document.getElementById('docTableBody').innerHTML =
-      '<tr><td colspan="4"><div class="state-box">' +
+      '<tr><td colspan="5"><div class="state-box">' +
       '<div class="state-box-icon">⚠</div>' +
       '<p class="state-box-title">Could not load documents</p>' +
       '<p class="state-box-sub">' + safeText(err.message) + '</p>' +
@@ -834,152 +1171,120 @@ async function fetchDocs() {
   }
 }
 
-// ── ADD DOCUMENT ───────────────────────────────────────────
-async function addDocument() {
-  dbg('INFO', 'ADD', 'addDocument() triggered');
-
-  const nameEl = document.getElementById('docName');
-  const linkEl = document.getElementById('docLink');
-  const btn    = document.getElementById('saveBtn');
-
-  if (!nameEl || !linkEl || !btn) {
-    dbg('ERR', 'ADD', 'DOM elements missing', {
-      nameEl: !!nameEl, linkEl: !!linkEl, btn: !!btn
-    });
-    return;
-  }
+// ── HOVER-TO-ADD DOTTED CARD ACTION ────────────────────────
+async function addEntryFromDottedCard() {
+  const nameEl = document.getElementById('addName');
+  const valEl = document.getElementById('addValue');
+  const btn = document.getElementById('addSaveBtn');
+  if (!nameEl || !valEl || !btn) return;
 
   const name = nameEl.value.trim();
-  const link = linkEl.value.trim();
-
-  dbg('INFO', 'ADD', 'Form values', {
-    nameLength: name.length,
-    linkLength: link.length,
-    linkPreview: link.slice(0, 60)
-  });
+  const link = valEl.value.trim();
 
   if (!name) {
-    dbg('WARN', 'ADD', 'Validation failed: name is empty');
+    toast('Name/Title is required.', 'error');
     nameEl.focus();
-    toast('Document name is required.', 'error');
     return;
   }
   if (!link) {
-    dbg('WARN', 'ADD', 'Validation failed: link is empty');
-    linkEl.focus();
-    toast('Secure link is required.', 'error');
+    toast('Link/Content/Secret is required.', 'error');
+    valEl.focus();
     return;
   }
 
-  try {
-    const parsedUrl = new URL(link);
-    dbg('INFO', 'ADD', 'URL validation passed', { protocol: parsedUrl.protocol, host: parsedUrl.host });
-  } catch (urlErr) {
-    dbg('WARN', 'ADD', 'URL validation failed: ' + urlErr.message);
-    toast('Please enter a valid URL.', 'error');
-    linkEl.focus();
-    return;
+  // If we are on Documents Vault, check for URL
+  if (activeTab === 'vault') {
+    try {
+      new URL(link);
+    } catch (urlErr) {
+      toast('Please enter a valid URL.', 'error');
+      valEl.focus();
+      return;
+    }
   }
 
   btn.disabled = true;
-  btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="animation:spin 0.8s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Saving…';
+  btn.textContent = 'Saving…';
 
-  const payload = { name, link };
-  dbg('NET', 'ADD', 'POSTing to /vault/api', { name, linkLength: link.length });
+  let bucketType = 'coding_bucket';
+  if (activeTab === 'buckets') {
+    const selectedRadio = document.querySelector('input[name="bucketType"]:checked');
+    if (selectedRadio) {
+      bucketType = selectedRadio.value;
+    }
+  }
+
+  const payload = {
+    name,
+    link,
+    type: activeTab === 'buckets' ? 'list' : 'vault',
+    listType: activeTab === 'buckets' ? bucketType : undefined
+  };
+
+  dbg('NET', 'ADD', 'POSTing payload to /vault/api', payload);
 
   try {
-    const postStart = performance.now();
     const res = await fetch('/vault/api?_t=' + Date.now(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify(payload)
     });
-    const postMs = (performance.now() - postStart).toFixed(0);
-
-    dbg('NET', 'ADD', 'POST response in ' + postMs + 'ms', {
-      status: res.status,
-      ok: res.ok,
-      contentType: res.headers.get('content-type')
-    });
-
-    const rawText = await res.text();
-    dbg('NET', 'ADD', 'POST raw response body: ' + rawText.slice(0, 400));
 
     if (!res.ok) {
-      let errMsg = 'HTTP ' + res.status;
-      try {
-        const errBody = JSON.parse(rawText);
-        errMsg = errBody.error || errMsg;
-        dbg('ERR', 'ADD', 'Server error response parsed', errBody);
-      } catch {
-        dbg('WARN', 'ADD', 'Could not parse error body as JSON: ' + rawText.slice(0, 100));
-      }
-      throw new Error(errMsg);
+      const errText = await res.text();
+      throw new Error(errText || 'Failed to save entry.');
     }
 
-    let responseData;
-    try {
-      responseData = JSON.parse(rawText);
-      dbg('NET', 'ADD', 'POST response parsed OK', {
-        success: responseData.success,
-        docId: responseData.doc ? responseData.doc.docId : 'MISSING',
-        docKeys: responseData.doc ? Object.keys(responseData.doc) : 'no doc'
-      });
-    } catch (jsonErr) {
-      dbg('ERR', 'ADD', 'Failed to parse POST response JSON: ' + jsonErr.message);
-      throw new Error('Server returned invalid JSON after save');
+    const resData = await res.json();
+    if (!resData.doc) {
+      throw new Error('Save succeeded but no data returned.');
     }
 
-    if (!responseData.doc) {
-      dbg('ERR', 'ADD', 'Response OK but no doc object in response!', responseData);
-      throw new Error('Save succeeded but server returned no document data');
+    if (activeTab === 'buckets') {
+      allLists.unshift(resData.doc);
+    } else {
+      allDocs.unshift(resData.doc);
     }
 
-    dbg('INFO', 'ADD', 'Prepending doc to allDocs array (was length=' + allDocs.length + ')');
-    allDocs.unshift(responseData.doc);
-    dbg('INFO', 'ADD', 'allDocs.length now=' + allDocs.length);
+    // Clear inputs and collapse card
+    nameEl.value = '';
+    valEl.value = '';
+    
+    const card = document.getElementById('dottedAddCard');
+    if (card) card.classList.remove('expanded');
 
+    toast('Entry saved securely.');
     updateStats();
     renderTable();
 
-    nameEl.value = '';
-    linkEl.value = '';
-    dbg('INFO', 'ADD', 'Form cleared');
-
-    toast('Document saved securely.');
-    dbg('INFO', 'ADD', 'addDocument() completed successfully');
-
   } catch (err) {
-    dbg('ERR', 'ADD', 'addDocument FAILED: ' + err.message);
-    if (err.stack) dbg('ERR', 'ADD', 'Stack: ' + err.stack);
+    dbg('ERR', 'ADD', 'addEntry FAILED: ' + err.message);
     toast('Failed to save: ' + err.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Save';
-    dbg('INFO', 'ADD', 'Save button re-enabled');
+    btn.textContent = 'Save Entry';
   }
 }
 
-// ── DELETE DOC ─────────────────────────────────────────────
-async function deleteDoc(id, btnEl) {
-  dbg('INFO', 'DELETE', 'deleteDoc() called, id=' + id);
+// ── DELETE INDIVIDUAL ITEM ─────────────────────────────────
+async function deleteItem(id, btnEl) {
+  dbg('INFO', 'DELETE', 'deleteItem() called, id=' + id);
 
   if (!id) {
-    dbg('ERR', 'DELETE', 'deleteDoc called with empty id!');
-    toast('Cannot delete: missing document ID.', 'error');
+    toast('Cannot delete: missing ID.', 'error');
     return;
   }
 
-  if (!confirm('Delete this document? This cannot be undone.')) {
-    dbg('INFO', 'DELETE', 'User cancelled deletion');
+  if (!confirm('Delete this entry? This cannot be undone.')) {
     return;
   }
 
   btnEl.disabled = true;
   btnEl.textContent = '…';
 
-  const url = '/vault/api/' + encodeURIComponent(id);
+  const type = activeTab === 'buckets' ? 'list' : 'vault';
+  const url = '/vault/api/' + encodeURIComponent(id) + '?type=' + type;
   dbg('NET', 'DELETE', 'DELETE ' + url);
 
   try {
@@ -987,81 +1292,78 @@ async function deleteDoc(id, btnEl) {
     const res = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
     const ms = (performance.now() - start).toFixed(0);
 
-    dbg('NET', 'DELETE', 'DELETE response in ' + ms + 'ms', {
-      status: res.status, ok: res.ok
-    });
-
-    const rawText = await res.text();
-    dbg('NET', 'DELETE', 'DELETE response body: ' + rawText.slice(0, 200));
-
     if (!res.ok) {
-      throw new Error('HTTP ' + res.status + ' — ' + rawText.slice(0, 80));
+      const errText = await res.text();
+      throw new Error('HTTP ' + res.status + ' — ' + errText.slice(0, 80));
     }
 
-    const prevLen = allDocs.length;
-    allDocs = allDocs.filter(d => d.docId !== id);
-    dbg('INFO', 'DELETE', 'Filtered allDocs: was=' + prevLen + ' now=' + allDocs.length);
-
-    if (allDocs.length === prevLen) {
-      dbg('WARN', 'DELETE', 'No doc was removed from allDocs — id not found locally: ' + id);
+    if (activeTab === 'buckets') {
+      allLists = allLists.filter(x => x.entryId !== id);
+    } else {
+      allDocs = allDocs.filter(x => x.docId !== id);
     }
+
+    // Remove from selected list if checked
+    selectedIds = selectedIds.filter(x => x !== id);
+    updateBulkDrawer();
 
     updateStats();
     renderTable();
-    toast('Document removed.');
-    dbg('INFO', 'DELETE', 'deleteDoc() completed successfully');
+    toast('Entry removed.');
 
   } catch (err) {
-    dbg('ERR', 'DELETE', 'deleteDoc FAILED: ' + err.message);
+    dbg('ERR', 'DELETE', 'deleteItem FAILED: ' + err.message);
     toast('Delete failed: ' + err.message, 'error');
     btnEl.disabled = false;
     btnEl.textContent = 'Remove';
   }
 }
 
+// ── DOTTED CARD PERSISTENCE LOGIC ──────────────────────────
+function setupDottedCardEvents() {
+  const card = document.getElementById('dottedAddCard');
+  if (!card) return;
+
+  card.addEventListener('click', function(e) {
+    // If not expanded and they clicked it, expand it
+    if (!card.classList.contains('expanded')) {
+      card.classList.add('expanded');
+      const firstInput = card.querySelector('input');
+      if (firstInput) firstInput.focus();
+    }
+  });
+
+  const inputs = card.querySelectorAll('input, select');
+  inputs.forEach(input => {
+    input.addEventListener('focus', () => {
+      isInputFocused = true;
+      card.classList.add('expanded');
+    });
+    input.addEventListener('blur', () => {
+      isInputFocused = false;
+      setTimeout(() => {
+        if (!isInputFocused && !card.matches(':hover')) {
+          card.classList.remove('expanded');
+        }
+      }, 150);
+    });
+  });
+
+  card.addEventListener('mouseleave', () => {
+    setTimeout(() => {
+      if (!isInputFocused) {
+        card.classList.remove('expanded');
+      }
+    }, 150);
+  });
+}
+
 // ── INIT ───────────────────────────────────────────────────
 function init() {
   dbg('INFO', 'INIT', '=== Vault Dashboard Initializing ===');
-  dbg('INFO', 'INIT', 'document.readyState=' + document.readyState);
-  dbg('INFO', 'INIT', 'User agent: ' + navigator.userAgent);
-  dbg('INFO', 'INIT', 'Window location: ' + window.location.href);
 
   try {
-    const docNameEl = document.getElementById('docName');
-    const docLinkEl = document.getElementById('docLink');
     const vaultTimeEl = document.getElementById('vaultTime');
-
-    dbg('INFO', 'INIT', 'DOM element checks', {
-      docName: !!docNameEl,
-      docLink: !!docLinkEl,
-      vaultTime: !!vaultTimeEl,
-      docTableBody: !!document.getElementById('docTableBody'),
-      statTotal: !!document.getElementById('statTotal'),
-      statStatus: !!document.getElementById('statStatus'),
-      statUpdated: !!document.getElementById('statUpdated'),
-      saveBtn: !!document.getElementById('saveBtn'),
-      searchInput: !!document.getElementById('searchInput'),
-      toastContainer: !!document.getElementById('toast-container')
-    });
-
-    if (docNameEl) {
-      docNameEl.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          dbg('INFO', 'INPUT', 'Enter on docName — focusing docLink');
-          const l = document.getElementById('docLink');
-          if (l) l.focus();
-        }
-      });
-    }
-
-    if (docLinkEl) {
-      docLinkEl.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          dbg('INFO', 'INPUT', 'Enter on docLink — calling addDocument()');
-          addDocument();
-        }
-      });
-    }
 
     function tick() {
       if (vaultTimeEl) {
@@ -1074,7 +1376,9 @@ function init() {
     const spinStyle = document.createElement('style');
     spinStyle.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
     document.head.appendChild(spinStyle);
-    dbg('INFO', 'INIT', 'Spin keyframe injected');
+
+    // Initial setup of dotted card inputs
+    setupDottedCardEvents();
 
     dbg('INFO', 'INIT', 'Calling fetchDocs()...');
     fetchDocs();
@@ -1083,15 +1387,12 @@ function init() {
 
   } catch (err) {
     dbg('ERR', 'INIT', 'INIT CRASHED: ' + err.message);
-    if (err.stack) dbg('ERR', 'INIT', err.stack);
   }
 }
 
 if (document.readyState === 'loading') {
-  dbg('INFO', 'BOOT', 'DOM not ready, attaching DOMContentLoaded listener');
   document.addEventListener('DOMContentLoaded', init);
 } else {
-  dbg('INFO', 'BOOT', 'DOM already ready (readyState=' + document.readyState + '), calling init() directly');
   init();
 }
 </script>
@@ -1115,38 +1416,17 @@ if (document.readyState === 'loading') {
 
     try {
       log('GET', 'Calling vaultRepo.findAll()...');
-      log('GET', 'vaultRepo exists?', !!this.vaultRepo);
-      log('GET', 'vaultRepo.findAll type?', typeof this.vaultRepo.findAll);
-
       const docs = await this.vaultRepo.findAll();
 
-      log('GET', 'findAll() returned. Type=' + typeof docs + ', isArray=' + Array.isArray(docs));
-      log('GET', 'Total docs returned: ' + (Array.isArray(docs) ? docs.length : 'N/A'));
+      log('GET', 'Calling user_lists query...');
+      const lists = await this.vaultRepo.db.collection('user_lists')
+        .find({ listType: { $in: ['coding_bucket', 'movie_bucket'] }, status: 'active' })
+        .toArray();
 
-      if (Array.isArray(docs) && docs.length > 0) {
-        log('GET', 'First doc shape (keys): ' + Object.keys(docs[0]).join(', '));
-        log('GET', 'First doc sample', {
-          docId: docs[0].docId,
-          name: docs[0].name,
-          hasLink: !!docs[0].link,
-          aliasCount: Array.isArray(docs[0].aliases) ? docs[0].aliases.length : 'N/A'
-        });
-      } else if (Array.isArray(docs) && docs.length === 0) {
-        log('GET', 'findAll() returned an empty array — collection may be empty');
-      } else {
-        log('GET', '⚠ findAll() returned a non-array!', docs);
-      }
-
-      log('GET', 'Sending JSON response...');
-      res.json(docs);
-      log('GET', 'JSON response sent OK');
-
+      log('GET', `Sending unified docs (${docs.length}) and lists (${lists.length})`);
+      res.json({ docs, lists });
     } catch (err) {
       logErr('GET', 'getDocuments threw an exception', err);
-      log('GET', 'vaultRepo state at time of error', {
-        hasRepo: !!this.vaultRepo,
-        repoKeys: this.vaultRepo ? Object.keys(this.vaultRepo) : []
-      });
       res.status(500).json({ error: 'Failed to retrieve documents.' });
     }
   }
@@ -1155,63 +1435,76 @@ if (document.readyState === 'loading') {
   private async addDocument(req: Request, res: Response) {
     log('POST', 'addDocument() called');
     log('POST', 'req.body raw', req.body);
-    log('POST', 'Content-Type header', req.headers['content-type']);
-    log('POST', 'body type', typeof req.body);
-    log('POST', 'body is null?', req.body === null);
-    log('POST', 'body keys', req.body ? Object.keys(req.body) : 'N/A');
 
-    const { name, link } = req.body || {};
-
-    log('POST', 'Extracted name', { value: name, type: typeof name, length: name ? name.length : 0 });
-    log('POST', 'Extracted link', { present: !!link, type: typeof link, length: link ? link.length : 0, preview: link ? link.slice(0, 60) : '' });
+    const { name, link, type, listType } = req.body || {};
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       log('POST', '⚠ Validation FAIL: name missing or empty');
-      return res.status(400).json({ error: 'Document name is required.' });
+      return res.status(400).json({ error: 'Name is required.' });
     }
 
     if (!link || typeof link !== 'string' || link.trim().length === 0) {
       log('POST', '⚠ Validation FAIL: link missing or empty');
-      return res.status(400).json({ error: 'Document link is required.' });
+      return res.status(400).json({ error: 'Content/Link is required.' });
     }
 
     try {
-      const parsed = new URL(link);
-      log('POST', 'URL validation passed', { protocol: parsed.protocol, host: parsed.host });
-    } catch (urlErr) {
-      log('POST', '⚠ URL validation FAIL: ' + (urlErr as Error).message);
-      return res.status(400).json({ error: 'Invalid URL provided.' });
-    }
+      if (type === 'list') {
+        // Save to user_lists collection
+        const targetListType = (listType === 'movie_bucket' || listType === 'coding_bucket') ? listType : 'coding_bucket';
+        
+        // Find existing userId to align with
+        let userId = 'default-user';
+        const existingList = await this.vaultRepo.db.collection('user_lists').findOne({});
+        if (existingList && existingList.userId) {
+          userId = existingList.userId;
+        }
 
-    const docId = randomUUID();
-    const doc: DocumentVaultEntry = {
-      docId,
-      name: name.trim(),
-      link: link.trim(),
-      aliases: [name.trim().toLowerCase()]
-    };
+        const entryId = randomUUID();
+        const cleanTitle = name.trim();
+        const urlRegex = /(https?:\/\/[^\s]+)/;
+        const urlMatch = link.match(urlRegex);
+        const rawUrl = urlMatch ? urlMatch[1] : link.trim();
 
-    log('POST', 'Constructed doc entry', {
-      docId: doc.docId,
-      name: doc.name,
-      linkLength: doc.link.length,
-      aliases: doc.aliases
-    });
+        const newEntry = {
+          entryId,
+          userId,
+          listType: targetListType,
+          title: cleanTitle,
+          status: 'active',
+          tags: [targetListType],
+          metadata: {
+            rawUrl: rawUrl,
+            notes: link.trim()
+          },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
 
-    try {
-      log('POST', 'Calling vaultRepo.save(doc)...');
-      await this.vaultRepo.save(doc);
-      log('POST', 'vaultRepo.save() completed without error');
+        log('POST', `Saving list entry to user_lists: ${cleanTitle}`);
+        await this.vaultRepo.db.collection('user_lists').insertOne(newEntry);
+        log('POST', 'Saved successfully to user_lists');
 
-      const responsePayload = { success: true, doc };
-      log('POST', 'Sending success response', { docId: doc.docId });
-      res.json(responsePayload);
-      log('POST', 'Response sent OK');
+        return res.json({ success: true, doc: newEntry });
+      } else {
+        // Save to user_vault collection
+        const docId = randomUUID();
+        const doc: DocumentVaultEntry = {
+          docId,
+          name: name.trim(),
+          link: link.trim(),
+          aliases: [name.trim().toLowerCase()]
+        };
 
+        log('POST', 'Calling vaultRepo.save(doc)...');
+        await this.vaultRepo.save(doc);
+        log('POST', 'vaultRepo.save() completed without error');
+
+        return res.json({ success: true, doc });
+      }
     } catch (err) {
-      logErr('POST', 'vaultRepo.save() threw an exception', err);
-      log('POST', 'Doc that failed to save', doc);
-      res.status(500).json({ error: 'Failed to save document.' });
+      logErr('POST', 'addDocument threw an exception', err);
+      res.status(500).json({ error: 'Failed to save entry.' });
     }
   }
 
@@ -1221,25 +1514,60 @@ if (document.readyState === 'loading') {
     log('DELETE', 'req.params', req.params);
 
     const id = req.params.id as string;
-    log('DELETE', 'Extracted id', { id, type: typeof id, length: id ? id.length : 0 });
+    const type = req.query.type as string;
 
     if (!id) {
       log('DELETE', '⚠ id is missing/empty — returning 400');
-      return res.status(400).json({ error: 'Missing document ID.' });
+      return res.status(400).json({ error: 'Missing ID.' });
     }
 
     try {
-      log('DELETE', 'Calling vaultRepo.delete(' + id + ')...');
-      await this.vaultRepo.delete(id);
-      log('DELETE', 'vaultRepo.delete() completed OK');
+      if (type === 'list') {
+        log('DELETE', `Deleting entryId ${id} from user_lists...`);
+        await this.vaultRepo.db.collection('user_lists').deleteOne({ entryId: id });
+        log('DELETE', 'user_lists deletion completed OK');
+      } else {
+        log('DELETE', `Calling vaultRepo.delete(${id})...`);
+        await this.vaultRepo.delete(id);
+        log('DELETE', 'vaultRepo.delete() completed OK');
+      }
 
       res.json({ success: true });
-      log('DELETE', 'Delete response sent');
-
     } catch (err) {
-      logErr('DELETE', 'vaultRepo.delete() threw an exception', err);
-      log('DELETE', 'id that failed to delete: ' + id);
-      res.status(500).json({ error: 'Failed to delete document.' });
+      logErr('DELETE', 'deleteDocument threw an exception', err);
+      res.status(500).json({ error: 'Failed to delete.' });
+    }
+  }
+
+  // ── DELETE BULK ───────────────────────────────────────────────────────────
+  private async deleteBulk(req: Request, res: Response) {
+    log('DELETE-BULK', 'deleteBulk() called');
+    const { ids, type } = req.body || {};
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      log('DELETE-BULK', '⚠ IDs array is missing/empty — returning 400');
+      return res.status(400).json({ error: 'IDs array is required.' });
+    }
+
+    try {
+      if (type === 'list') {
+        log('DELETE-BULK', `Deleting ${ids.length} entries from user_lists...`);
+        const result = await this.vaultRepo.db.collection('user_lists').deleteMany({
+          entryId: { $in: ids }
+        });
+        log('DELETE-BULK', `Successfully deleted ${result.deletedCount} lists`);
+        return res.json({ success: true, count: result.deletedCount });
+      } else {
+        log('DELETE-BULK', `Deleting ${ids.length} docs from user_vault...`);
+        const result = await this.vaultRepo.db.collection('user_vault').deleteMany({
+          docId: { $in: ids }
+        });
+        log('DELETE-BULK', `Successfully deleted ${result.deletedCount} docs`);
+        return res.json({ success: true, count: result.deletedCount });
+      }
+    } catch (err) {
+      logErr('DELETE-BULK', 'Bulk delete failed', err);
+      return res.status(500).json({ error: 'Failed to perform bulk delete.' });
     }
   }
 }

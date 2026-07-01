@@ -2,40 +2,16 @@ import os
 import sys
 import random
 import ctypes
-import asyncio
 import threading
-from datetime import datetime
-from db import live_alerts_col
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Snarky Marvel Friday-style greetings quotes
-# ─────────────────────────────────────────────────────────────────────────────
-GREETINGS_QUOTES = [
-    "Karen runtime initialized. All systems online, unfortunately including your procrastination habits.",
-    "Welcome back, sir. I've synced your calendar. Try to actually do something today.",
-    "Karen online. Ready to watch you ignore your tasks in real time.",
-    "Online and active. Shall we pretend you're going to be productive today, sir?",
-    "Greetings, sir. I'm online. Don't worry, I won't tell anyone you're still in bed.",
-    "Karen active. All systems are green. Let's see how long that lasts.",
-    "Online. I hope your work ethic is ready, because my sarcasm definitely is.",
-    "Karen is in the house. Ready to witness another day of clicking 'Not Yet'.",
-    "Welcome back, master of snooze buttons. What are we procrastinating on today?",
-    "System online. Prepared to guide you, or just mock your timeline, whichever comes first.",
-    "Karen active. Today's forecast: 100% chance of tasks, 0% chance of you starting them on time.",
-    "Online. All circuits fully charged. Unlike your motivation.",
-    "Welcome back, sir. I am ready. Try not to disappoint me today.",
-    "Karen online. Let's get to work, sir. And by work, I mean you pretending to code.",
-    "System online. Locked and loaded. Go ahead, make my day and actually start a task."
-]
-
-# Directory to cache startup greetings
+# Directory where pre-generated startup greetings are stored
 GREETINGS_DIR = "greetings"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Native Windows Audio Player (Zero-Dependency)
 # ─────────────────────────────────────────────────────────────────────────────
 def play_audio_windows(filepath: str, wait: bool = True):
-    """Plays an MP3 or WAV file windowlessly on Windows using MCI interface."""
+    """Plays a WAV file windowlessly on Windows using MCI interface."""
     filepath = os.path.abspath(filepath)
     alias = f"karen_sound_{random.randint(1000, 9999)}"
     try:
@@ -56,78 +32,20 @@ def play_audio_async(filepath: str):
     threading.Thread(target=play_audio_windows, args=(filepath, True), daemon=True).start()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Edge-TTS Greetings Cache Generation
+# Startup Greeting Cues
 # ─────────────────────────────────────────────────────────────────────────────
-def generate_greetings_cache():
-    """Generates audio files for the startup quotes. Uses ChatTTS if installed, otherwise Edge-TTS."""
-    if not os.path.exists(GREETINGS_DIR):
-        os.makedirs(GREETINGS_DIR)
-
-    # Try local ChatTTS first
-    try:
-        import ChatTTS
-        import soundfile as sf
-        print("[Voice] Caching 15 startup greetings using local ChatTTS... Please wait.")
-        chat = ChatTTS.Chat()
-        chat.load(compile=False)
-        
-        for i, quote in enumerate(GREETINGS_QUOTES):
-            output_file = os.path.join(GREETINGS_DIR, f"greet_{i}.wav")
-            if not os.path.exists(output_file):
-                try:
-                    wavs = chat.infer([quote])
-                    sf.write(output_file, wavs[0][0], 24000)
-                except Exception as e:
-                    print(f"[Voice] Error caching ChatTTS quote {i}: {e}")
-        print("[Voice] ChatTTS Caching complete.")
-        return
-    except ImportError:
-        pass
-
-    # Fallback to Edge-TTS
-    try:
-        import edge_tts
-        print("[Voice] Caching 15 startup greetings using Edge-TTS... Please wait.")
-        
-        async def cache_edge():
-            for i, quote in enumerate(GREETINGS_QUOTES):
-                output_file = os.path.join(GREETINGS_DIR, f"greet_{i}.mp3")
-                if not os.path.exists(output_file):
-                    try:
-                        communicate = edge_tts.Communicate(quote, "en-US-AvaMultilingualNeural")
-                        await communicate.save(output_file)
-                    except Exception as e:
-                        print(f"[Voice] Error caching Edge-TTS quote {i}: {e}")
-                        
-        asyncio.run(cache_edge())
-        print("[Voice] Edge-TTS Caching complete.")
-    except Exception as e:
-        print(f"[Voice] Caching failed: {e}")
-
-def ensure_greetings_cached():
-    """Synchronous wrapper to run greetings cache generator."""
-    needs_cache = False
-    if not os.path.exists(GREETINGS_DIR):
-        needs_cache = True
-    else:
-        files = [f for f in os.listdir(GREETINGS_DIR) if f.endswith(".mp3") or f.endswith(".wav")]
-        if len(files) < len(GREETINGS_QUOTES):
-            needs_cache = True
-            
-    if needs_cache:
-        generate_greetings_cache()
-
 def play_startup_greeting():
     """Selects and plays a random cached startup greeting synchronously."""
-    ensure_greetings_cached()
-    
     if os.path.exists(GREETINGS_DIR):
-        files = [f for f in os.listdir(GREETINGS_DIR) if f.endswith(".mp3") or f.endswith(".wav")]
+        files = [f for f in os.listdir(GREETINGS_DIR) if f.endswith(".wav")]
         if files:
             chosen = random.choice(files)
             filepath = os.path.join(GREETINGS_DIR, chosen)
             print("[Voice] Playing startup system check greeting...")
             play_audio_windows(filepath, wait=True)
+            return
+            
+    print("[Voice] Note: No cached startup greetings found. Please run the generation script to create them.")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ChatTTS Conversational Voice
@@ -158,44 +76,27 @@ def load_chattts_lazy():
     threading.Thread(target=run, daemon=True).start()
 
 def speak_conversation(text: str):
-    """Synthesizes text using local ChatTTS if available; otherwise falls back to Edge-TTS."""
+    """Synthesizes text using local ChatTTS and plays it asynchronously."""
     load_chattts_lazy() # Ensure we trigger loading
     
     global chat_model
-    if chat_model is not None:
-        def run_chattts():
-            try:
-                import soundfile as sf
-                wavs = chat_model.infer([text])
-                temp_file = "temp_karen_voice.wav"
-                sf.write(temp_file, wavs[0][0], 24000)
-                play_audio_windows(temp_file, wait=True)
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            except Exception:
-                pass
-        threading.Thread(target=run_chattts, daemon=True).start()
+    if chat_model is None:
         return
 
-    # Fallback to Edge-TTS (asynchronous generation, played in background)
-    def run_edgetts():
+    def run():
         try:
-            import edge_tts
-            import asyncio
-            temp_file = "temp_karen_voice.mp3"
+            import soundfile as sf
+            wavs = chat_model.infer([text])
+            temp_file = "temp_karen_voice.wav"
+            sf.write(temp_file, wavs[0][0], 24000)
             
-            # Helper to run async save inside thread loop
-            async def save_voice():
-                communicate = edge_tts.Communicate(text, "en-US-AvaMultilingualNeural")
-                await communicate.save(temp_file)
-                
-            asyncio.run(save_voice())
-            
-            # Play and delete
             play_audio_windows(temp_file, wait=True)
             if os.path.exists(temp_file):
-                os.remove(temp_file)
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
         except Exception as e:
             pass
 
-    threading.Thread(target=run_edgetts, daemon=True).start()
+    threading.Thread(target=run, daemon=True).start()

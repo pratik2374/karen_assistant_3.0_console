@@ -114,7 +114,7 @@ def run_cli():
             continue
 
         # Process natural query via LLM
-        print(f"{Fore.GRAY}Thinking...")
+        print(f"{Fore.LIGHTBLACK_EX}Thinking...")
         response = ai.generate_karen_response(query, conversation_history)
         
         # Output chatbot styled text

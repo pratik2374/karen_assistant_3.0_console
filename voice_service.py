@@ -135,32 +135,44 @@ def load_chattts_lazy():
     threading.Thread(target=run, daemon=True).start()
 
 def speak_conversation(text: str):
-    """Synthesizes text using local ChatTTS and plays it asynchronously."""
+    """Synthesizes text using local ChatTTS if available; otherwise falls back to Edge-TTS."""
     load_chattts_lazy() # Ensure we trigger loading
     
     global chat_model
-    if chat_model is None:
-        # ChatTTS not loaded or not installed, fallback silently
+    if chat_model is not None:
+        def run_chattts():
+            try:
+                import soundfile as sf
+                wavs = chat_model.infer([text])
+                temp_file = "temp_karen_voice.wav"
+                sf.write(temp_file, wavs[0][0], 24000)
+                play_audio_windows(temp_file, wait=True)
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except Exception:
+                pass
+        threading.Thread(target=run_chattts, daemon=True).start()
         return
 
-    def run():
+    # Fallback to Edge-TTS (asynchronous generation, played in background)
+    def run_edgetts():
         try:
-            import soundfile as sf
-            # ChatTTS inference
-            # Clean text of any brackets, or let ChatTTS process them
-            wavs = chat_model.infer([text])
-            temp_file = "temp_karen_voice.wav"
-            sf.write(temp_file, wavs[0][0], 24000)
+            import edge_tts
+            import asyncio
+            temp_file = "temp_karen_voice.mp3"
             
-            # Play in background
+            # Helper to run async save inside thread loop
+            async def save_voice():
+                communicate = edge_tts.Communicate(text, "en-US-AvaMultilingualNeural")
+                await communicate.save(temp_file)
+                
+            asyncio.run(save_voice())
+            
+            # Play and delete
             play_audio_windows(temp_file, wait=True)
-            # Remove temp file
             if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except Exception:
-                    pass
+                os.remove(temp_file)
         except Exception as e:
             pass
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=run_edgetts, daemon=True).start()

@@ -56,8 +56,13 @@ def process_active_sagas():
             # Show toast with action buttons
             show_escalation_toast("Upcoming Task Warning", message, task_id)
             
-            # Set Check-In wakeup: start_time + 15 minutes
-            check_in_time = start_time_dt + timedelta(minutes=15)
+            # Set Check-In wakeup: start_time + 15 minutes (or 1 minute if starts in less than 5 minutes)
+            time_to_start = start_time_dt - now_utc
+            if time_to_start <= timedelta(minutes=5):
+                check_in_time = start_time_dt + timedelta(minutes=1)
+            else:
+                check_in_time = start_time_dt + timedelta(minutes=15)
+                
             if check_in_time < now_utc:
                 # If event already started in past, schedule check-in in 1 minute
                 check_in_time = now_utc + timedelta(minutes=1)
@@ -82,8 +87,12 @@ def process_active_sagas():
             # Show toast with action buttons
             show_escalation_toast("Did you start yet?", message, task_id)
             
-            # Set Nudge wakeup: 10 minutes from now
-            nudge_time = now_utc + timedelta(minutes=10)
+            # Set Nudge wakeup: 10 minutes from now (or 1 minute for short-interval reminders)
+            time_since_start = now_utc - start_time_dt
+            if time_since_start <= timedelta(minutes=10):
+                nudge_time = now_utc + timedelta(minutes=1)
+            else:
+                nudge_time = now_utc + timedelta(minutes=10)
 
             # Update saga state to Stage 2
             saga_states_col.update_one(

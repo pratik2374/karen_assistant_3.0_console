@@ -37,9 +37,9 @@ def sync_calendar_events():
 
     calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
     
-    # Range: 1 hour ago to 24 hours from now
+    # Range: 16 hours ago (covers entire day starting from morning) to 24 hours from now
     now_utc = datetime.now(timezone.utc)
-    time_min = (now_utc - timedelta(hours=1)).isoformat()
+    time_min = (now_utc - timedelta(hours=16)).isoformat()
     time_max = (now_utc + timedelta(hours=24)).isoformat()
 
     try:

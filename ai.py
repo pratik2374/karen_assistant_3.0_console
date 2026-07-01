@@ -50,11 +50,13 @@ def create_reminder(title: str, delay_minutes: int) -> str:
     task_id = str(uuid.uuid4())
     now_utc = datetime.now(timezone.utc)
     start_time = now_utc + timedelta(minutes=delay_minutes)
+    end_time = start_time + timedelta(minutes=15)
     
     tasks_col.insert_one({
         "id": task_id,
         "title": title,
         "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
         "status": "PENDING"
     })
     

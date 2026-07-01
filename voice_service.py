@@ -224,6 +224,9 @@ class VoiceStreamer:
         self.queue = queue.Queue()
         self.buffer = ""
         self.index = 0
+        self.next_index = 0
+        self.results = {}
+        self.lock = threading.Lock()
         self.running = True
         self.thread = threading.Thread(target=self._play_loop, daemon=True)
         self.thread.start()
@@ -255,11 +258,12 @@ class VoiceStreamer:
             self._synthesize_async(sentence)
 
     def _synthesize_async(self, sentence: str):
-        """Spawns a background thread to synthesize the sentence and queue the filename."""
+        """Spawns a background thread to synthesize the sentence and queue the filename in order."""
         idx = self.index
         self.index += 1
         
         def run_synth():
+            filename = None
             try:
                 # Try local ChatTTS first if it's loaded
                 global chat_model
@@ -268,24 +272,33 @@ class VoiceStreamer:
                     wavs = chat_model.infer([sentence])
                     filename = f"temp_stream_{idx}_{random.randint(10,99)}.wav"
                     sf.write(filename, wavs[0][0], 24000)
-                    self.queue.put(filename)
-                    return
+                else:
+                    # Fallback to Edge-TTS
+                    import edge_tts
+                    import asyncio
+                    filename = f"temp_stream_{idx}_{random.randint(10,99)}.mp3"
                     
-                # Fallback to Edge-TTS
-                import edge_tts
-                import asyncio
-                filename = f"temp_stream_{idx}_{random.randint(10,99)}.mp3"
-                
-                async def save_voice():
-                    communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural")
-                    await communicate.save(filename)
-                    
-                asyncio.run(save_voice())
-                self.queue.put(filename)
+                    async def save_voice():
+                        communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural")
+                        await communicate.save(filename)
+                        
+                    asyncio.run(save_voice())
             except Exception:
-                pass
+                filename = None
+            finally:
+                with self.lock:
+                    self.results[idx] = filename
+                    self._check_queue_readiness()
                 
         threading.Thread(target=run_synth, daemon=True).start()
+
+    def _check_queue_readiness(self):
+        """Puts completed filenames into the play queue in strict sequential order."""
+        while self.next_index in self.results:
+            filepath = self.results.pop(self.next_index)
+            if filepath:
+                self.queue.put(filepath)
+            self.next_index += 1
 
     def _play_loop(self):
         """Background thread playing files from the queue sequentially."""

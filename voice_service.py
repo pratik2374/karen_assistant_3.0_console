@@ -58,48 +58,71 @@ def play_audio_async(filepath: str):
 # ─────────────────────────────────────────────────────────────────────────────
 # Edge-TTS Greetings Cache Generation
 # ─────────────────────────────────────────────────────────────────────────────
-async def generate_greetings_cache():
-    """Generates MP3 files for the startup quotes if they are not already cached."""
+def generate_greetings_cache():
+    """Generates audio files for the startup quotes. Uses ChatTTS if installed, otherwise Edge-TTS."""
     if not os.path.exists(GREETINGS_DIR):
         os.makedirs(GREETINGS_DIR)
+
+    # Try local ChatTTS first
+    try:
+        import ChatTTS
+        import soundfile as sf
+        print("[Voice] Caching 15 startup greetings using local ChatTTS... Please wait.")
+        chat = ChatTTS.Chat()
+        chat.load(compile=False)
         
-    import edge_tts
-    print("[Voice] Caching startup voice greetings... Please wait.")
-    
-    for i, quote in enumerate(GREETINGS_QUOTES):
-        output_file = os.path.join(GREETINGS_DIR, f"greet_{i}.mp3")
-        if not os.path.exists(output_file):
-            try:
-                communicate = edge_tts.Communicate(quote, "en-US-AvaMultilingualNeural")
-                await communicate.save(output_file)
-            except Exception as e:
-                print(f"[Voice] Error caching quote {i}: {e}")
-                
-    print("[Voice] Caching complete.")
+        for i, quote in enumerate(GREETINGS_QUOTES):
+            output_file = os.path.join(GREETINGS_DIR, f"greet_{i}.wav")
+            if not os.path.exists(output_file):
+                try:
+                    wavs = chat.infer([quote])
+                    sf.write(output_file, wavs[0][0], 24000)
+                except Exception as e:
+                    print(f"[Voice] Error caching ChatTTS quote {i}: {e}")
+        print("[Voice] ChatTTS Caching complete.")
+        return
+    except ImportError:
+        pass
+
+    # Fallback to Edge-TTS
+    try:
+        import edge_tts
+        print("[Voice] Caching 15 startup greetings using Edge-TTS... Please wait.")
+        
+        async def cache_edge():
+            for i, quote in enumerate(GREETINGS_QUOTES):
+                output_file = os.path.join(GREETINGS_DIR, f"greet_{i}.mp3")
+                if not os.path.exists(output_file):
+                    try:
+                        communicate = edge_tts.Communicate(quote, "en-US-AvaMultilingualNeural")
+                        await communicate.save(output_file)
+                    except Exception as e:
+                        print(f"[Voice] Error caching Edge-TTS quote {i}: {e}")
+                        
+        asyncio.run(cache_edge())
+        print("[Voice] Edge-TTS Caching complete.")
+    except Exception as e:
+        print(f"[Voice] Caching failed: {e}")
 
 def ensure_greetings_cached():
     """Synchronous wrapper to run greetings cache generator."""
-    # Check if we need to cache
     needs_cache = False
     if not os.path.exists(GREETINGS_DIR):
         needs_cache = True
     else:
-        files = os.listdir(GREETINGS_DIR)
+        files = [f for f in os.listdir(GREETINGS_DIR) if f.endswith(".mp3") or f.endswith(".wav")]
         if len(files) < len(GREETINGS_QUOTES):
             needs_cache = True
             
     if needs_cache:
-        try:
-            asyncio.run(generate_greetings_cache())
-        except Exception as e:
-            print(f"[Voice] Could not cache greetings: {e}")
+        generate_greetings_cache()
 
 def play_startup_greeting():
     """Selects and plays a random cached startup greeting synchronously."""
     ensure_greetings_cached()
     
     if os.path.exists(GREETINGS_DIR):
-        files = [f for f in os.listdir(GREETINGS_DIR) if f.endswith(".mp3")]
+        files = [f for f in os.listdir(GREETINGS_DIR) if f.endswith(".mp3") or f.endswith(".wav")]
         if files:
             chosen = random.choice(files)
             filepath = os.path.join(GREETINGS_DIR, chosen)

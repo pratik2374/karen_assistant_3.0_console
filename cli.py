@@ -96,7 +96,8 @@ def listen_for_live_alerts():
         time.sleep(2)
 
 def run_cli():
-    # Start lazy loading ChatTTS
+    # Play startup greeting and start lazy loading ChatTTS
+    voice_service.play_startup_greeting()
     voice_service.load_chattts_lazy()
     
     print_banner()

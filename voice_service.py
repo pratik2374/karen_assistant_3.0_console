@@ -163,6 +163,7 @@ def load_chattts_lazy():
 
 def speak_conversation(text: str):
     """Synthesizes text using local ChatTTS if available; otherwise falls back to Edge-TTS."""
+    global chat_model
     load_chattts_lazy() # Ensure we trigger loading
     
     # Check internet first if local ChatTTS is not loaded
@@ -173,7 +174,6 @@ def speak_conversation(text: str):
             print(f"\n{Fore.RED}[Voice Warning] Offline. Conversational audio playback disabled.{Fore.RESET}")
             return
 
-    global chat_model
     if chat_model is not None:
         def run_chattts():
             try:

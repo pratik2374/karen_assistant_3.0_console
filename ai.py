@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import threading
 from datetime import datetime, timezone, timedelta
 from colorama import Fore
 from agno.agent import Agent
@@ -230,6 +231,31 @@ def generate_karen_response(user_message: str, conversation_history: list = None
         return content
     except Exception as e:
         return f"Ugh, I hit a snag running my agent: {e}"
+
+def generate_karen_response_stream(user_message: str, conversation_history: list = None):
+    """Streams the LLM response chunk by chunk and extracts memory at the end."""
+    karen = get_karen_orchestrator()
+    
+    msg = ""
+    if conversation_history:
+        for item in conversation_history:
+            role = "User" if item["role"] == "user" else "Karen"
+            msg += f"{role}: {item['content']}\n"
+    msg += f"User: {user_message}"
+
+    full_content = ""
+    try:
+        response_generator = karen.run(msg, stream=True)
+        for chunk in response_generator:
+            if hasattr(chunk, "content") and chunk.content:
+                full_content += chunk.content
+                yield chunk.content
+                
+        # Extract memories in background at the end of the stream
+        if full_content:
+            threading.Thread(target=extract_and_save_memories, args=(user_message, full_content), daemon=True).start()
+    except Exception as e:
+        yield f"Error generating streaming response: {e}"
 
 def extract_and_save_memories(user_message: str, karen_response: str):
     """Memory extractor runs using the Memory Agent."""

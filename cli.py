@@ -141,16 +141,24 @@ def run_cli():
                 print(f"{Fore.RED}Unknown command: {query}. Type {Fore.YELLOW}/help{Fore.RED} for commands list.")
             continue
 
-        # Process natural query via LLM
+        # Process natural query via LLM (streaming)
         print(f"{Fore.LIGHTBLACK_EX}Thinking...")
-        response = ai.generate_karen_response(query, conversation_history)
         
-        # Output chatbot styled text
-        print(f"\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}{response}\n")
+        # Initialize voice streamer
+        streamer = voice_service.VoiceStreamer()
         
-        # Speak conversational response
-        voice_service.speak_conversation(response)
+        print(f"\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}", end="", flush=True)
         
+        response = ""
+        try:
+            for chunk in ai.generate_karen_response_stream(query, conversation_history):
+                print(chunk, end="", flush=True)
+                response += chunk
+                streamer.push_chunk(chunk)
+        finally:
+            streamer.flush()
+            print("\n")
+            
         # Append exchange to history
         conversation_history.append({"role": "user", "content": query})
         conversation_history.append({"role": "assistant", "content": response})

@@ -216,3 +216,96 @@ def speak_conversation(text: str):
             pass
 
     threading.Thread(target=run_edgetts, daemon=True).start()
+
+class VoiceStreamer:
+    """Handles sentence-by-sentence background voice synthesis and sequential audio playback."""
+    def __init__(self):
+        import queue
+        self.queue = queue.Queue()
+        self.buffer = ""
+        self.index = 0
+        self.running = True
+        self.thread = threading.Thread(target=self._play_loop, daemon=True)
+        self.thread.start()
+
+    def push_chunk(self, text_chunk: str):
+        """Accumulates text chunks and triggers sentence synthesis when boundary is hit."""
+        self.buffer += text_chunk
+        
+        # Look for sentence boundaries: . ? ! or newline
+        if len(self.buffer) > 15:
+            delimiters = [". ", "? ", "! ", "\n", ".\n", "?\n", "!\n"]
+            split_index = -1
+            for delim in delimiters:
+                idx = self.buffer.rfind(delim)
+                if idx != -1 and idx > split_index:
+                    split_index = idx + len(delim)
+                    
+            if split_index != -1:
+                sentence = self.buffer[:split_index].strip()
+                self.buffer = self.buffer[split_index:]
+                if sentence:
+                    self._synthesize_async(sentence)
+
+    def flush(self):
+        """Synthesizes any remaining text left in the buffer at the end of the stream."""
+        sentence = self.buffer.strip()
+        self.buffer = ""
+        if sentence:
+            self._synthesize_async(sentence)
+
+    def _synthesize_async(self, sentence: str):
+        """Spawns a background thread to synthesize the sentence and queue the filename."""
+        idx = self.index
+        self.index += 1
+        
+        def run_synth():
+            try:
+                # Try local ChatTTS first if it's loaded
+                global chat_model
+                if chat_model is not None:
+                    import soundfile as sf
+                    wavs = chat_model.infer([sentence])
+                    filename = f"temp_stream_{idx}_{random.randint(10,99)}.wav"
+                    sf.write(filename, wavs[0][0], 24000)
+                    self.queue.put(filename)
+                    return
+                    
+                # Fallback to Edge-TTS
+                import edge_tts
+                import asyncio
+                filename = f"temp_stream_{idx}_{random.randint(10,99)}.mp3"
+                
+                async def save_voice():
+                    communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural")
+                    await communicate.save(filename)
+                    
+                asyncio.run(save_voice())
+                self.queue.put(filename)
+            except Exception:
+                pass
+                
+        threading.Thread(target=run_synth, daemon=True).start()
+
+    def _play_loop(self):
+        """Background thread playing files from the queue sequentially."""
+        import queue
+        while self.running:
+            try:
+                filepath = self.queue.get(timeout=1.0)
+                # Play synchronously (blocking this audio thread so they play in order!)
+                play_audio_windows(filepath, wait=True)
+                # Clean up file
+                if os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except Exception:
+                        pass
+                self.queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception:
+                pass
+
+    def stop(self):
+        self.running = False

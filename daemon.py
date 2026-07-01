@@ -1,0 +1,145 @@
+import time
+import os
+from datetime import datetime, timezone, timedelta
+from db import tasks_col, saga_states_col
+from calendar_service import sync_calendar_events
+from notifier import show_escalation_toast
+import ai
+
+def parse_iso_time(time_str: str) -> datetime:
+    """Parses an ISO format time string with UTC timezone offset indicator."""
+    try:
+        return datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+    except Exception:
+        return datetime.strptime(time_str[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+
+def process_active_sagas():
+    """Checks for due timers in active reminder sagas and processes stage transitions."""
+    now_utc = datetime.now(timezone.utc)
+    now_str = now_utc.isoformat()
+
+    # Query all active sagas with wakeups due now or in the past
+    due_sagas = list(saga_states_col.find({
+        "status": "ACTIVE",
+        "next_wakeup": {"$lte": now_str}
+    }))
+
+    for saga in due_sagas:
+        task_id = saga["task_id"]
+        stage = saga["current_stage"]
+        
+        # Load associated task
+        task = tasks_col.find_one({"id": task_id})
+        if not task:
+            # Task deleted, stop saga
+            saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+            continue
+
+        # If user already started or finished the task, stop the saga immediately
+        if task["status"] in ["STARTED", "COMPLETED", "CANCELLED", "MISSED"]:
+            saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+            print(f"[Daemon] Terminated saga for task '{task['title']}' (ID: {task_id}) since status is '{task['status']}'")
+            continue
+
+        title = task["title"]
+        start_time_dt = parse_iso_time(task["start_time"])
+
+        print(f"[Daemon] Processing Saga Stage {stage} for task: '{title}' (ID: {task_id})")
+
+        if stage == 0:
+            # ─────────────────────────────────────────────────────────────────
+            # Stage 0: Pre-Alert (10 minutes before event)
+            # ─────────────────────────────────────────────────────────────────
+            prompt = f"Write a snarky, punchy pre-alert message warning the user that their task '{title}' starts in 10 minutes. Tell them to wrap up whatever they are doing."
+            message = ai.generate_karen_response(prompt)
+            
+            # Show toast with action buttons
+            show_escalation_toast("Upcoming Task Warning", message, task_id)
+            
+            # Set Check-In wakeup: start_time + 15 minutes
+            check_in_time = start_time_dt + timedelta(minutes=15)
+            if check_in_time < now_utc:
+                # If event already started in past, schedule check-in in 1 minute
+                check_in_time = now_utc + timedelta(minutes=1)
+
+            # Update saga state to Stage 1
+            saga_states_col.update_one(
+                {"task_id": task_id},
+                {"$set": {
+                    "current_stage": 1,
+                    "next_wakeup": check_in_time.isoformat()
+                }}
+            )
+            print(f"[Daemon] Saga for '{title}' advanced to Stage 1 (Check-In scheduled at {check_in_time.isoformat()})")
+
+        elif stage == 1:
+            # ─────────────────────────────────────────────────────────────────
+            # Stage 1: Check-In (15 minutes after event start)
+            # ─────────────────────────────────────────────────────────────────
+            prompt = f"Write a snarky, critical check-in notification for a task '{title}' that started 15 minutes ago. The user has not confirmed starting it yet. Tell them to get to work."
+            message = ai.generate_karen_response(prompt)
+            
+            # Show toast with action buttons
+            show_escalation_toast("Did you start yet?", message, task_id)
+            
+            # Set Nudge wakeup: 10 minutes from now
+            nudge_time = now_utc + timedelta(minutes=10)
+
+            # Update saga state to Stage 2
+            saga_states_col.update_one(
+                {"task_id": task_id},
+                {"$set": {
+                    "current_stage": 2,
+                    "next_wakeup": nudge_time.isoformat()
+                }}
+            )
+            print(f"[Daemon] Saga for '{title}' advanced to Stage 2 (Nudge scheduled at {nudge_time.isoformat()})")
+
+        elif stage == 2:
+            # ─────────────────────────────────────────────────────────────────
+            # Stage 2: Disappointed Nudge (10 minutes after Check-In)
+            # ─────────────────────────────────────────────────────────────────
+            prompt = f"Write a highly mocking, disappointed emotional nudge for a task '{title}' that started 25 minutes ago. The user completely ignored previous alerts. Make it highly sarcastic."
+            message = ai.generate_karen_response(prompt)
+            
+            # Show final notification (no buttons needed, or keep buttons in case they start late)
+            show_escalation_toast("I am disappointed in you", message, task_id)
+            
+            # Mark task status as MISSED and stop saga
+            tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
+            saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+            print(f"[Daemon] Saga for '{title}' completed. Task marked as MISSED.")
+
+def main_loop():
+    print("=" * 60)
+    print("           KAREN DAEMON  ·  Background Scheduler            ")
+    print("          Escalating 3-Stage Procrastination Sagas          ")
+    print("=" * 60)
+    
+    # Run initial sync on start
+    print("[Daemon] Syncing events on startup...")
+    sync_calendar_events()
+    
+    # Counters for periodic calendar sync (every 5 minutes)
+    sync_interval_seconds = 300
+    last_sync_time = time.time()
+    
+    print("[Daemon] Background service is active and polling every 5 seconds...")
+    try:
+        while True:
+            # 1. Process active reminder escalation sagas
+            process_active_sagas()
+            
+            # 2. Check if it's time to sync calendar events (every 5 minutes)
+            if time.time() - last_sync_time >= sync_interval_seconds:
+                print("[Daemon] Running periodic Google Calendar sync...")
+                sync_calendar_events()
+                last_sync_time = time.time()
+                
+            time.sleep(5)
+    except KeyboardInterrupt:
+        print("[Daemon] Service stopped gracefully.")
+
+if __name__ == "__main__":
+    import db
+    main_loop()

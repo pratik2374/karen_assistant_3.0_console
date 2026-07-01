@@ -1,7 +1,9 @@
 import os
 import json
+import uuid
+from datetime import datetime, timezone, timedelta
 from openai import OpenAI
-from db import memories_col
+from db import memories_col, tasks_col, saga_states_col
 
 # Initialize OpenAI client
 client = None
@@ -18,8 +20,102 @@ def get_openai_client():
 def get_model_name():
     return os.getenv("OPENAI_MODEL_NAME", "gpt-5.4-mini")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Python Tools / Functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_reminder(title: str, delay_minutes: int) -> str:
+    """Creates a task and active saga state in MongoDB based on the title and delay minutes."""
+    task_id = str(uuid.uuid4())
+    now_utc = datetime.now(timezone.utc)
+    
+    # Calculate event start time
+    start_time = now_utc + timedelta(minutes=delay_minutes)
+    
+    # Pre-alert trigger time (10m before event, or 5s from now if starts sooner)
+    pre_alert_time = start_time - timedelta(minutes=10)
+    if pre_alert_time < now_utc:
+        pre_alert_time = now_utc + timedelta(seconds=5)
+        
+    tasks_col.insert_one({
+        "id": task_id,
+        "title": title,
+        "start_time": start_time.isoformat(),
+        "status": "PENDING"
+    })
+    
+    saga_states_col.insert_one({
+        "task_id": task_id,
+        "current_stage": 0,
+        "next_wakeup": pre_alert_time.isoformat(),
+        "status": "ACTIVE"
+    })
+    
+    print(f"[Tool] Created reminder '{title}' (ID: {task_id}) starting at {start_time.isoformat()}")
+    return f"Success: Created reminder '{title}' (ID: {task_id})"
+
+def complete_task(task_id: str) -> str:
+    """Marks a task as COMPLETED and halts its escalating timer saga."""
+    res1 = tasks_col.update_one({"id": task_id}, {"$set": {"status": "COMPLETED"}})
+    res2 = saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+    print(f"[Tool] Marked task {task_id} as COMPLETED. Saga stopped.")
+    return f"Success: Task {task_id} completed and reminder saga stopped."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenAI Tool Specifications
+# ─────────────────────────────────────────────────────────────────────────────
+
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_reminder",
+            "description": "Create a task/reminder with a title and a specific delay in minutes from now.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "The title or content of the reminder (e.g. 'drink tea', 'call mom')."
+                    },
+                    "delay_minutes": {
+                        "type": "integer",
+                        "description": "The delay in minutes from the current time when the task starts."
+                    }
+                },
+                "required": ["title", "delay_minutes"],
+                "additionalProperties": False
+            },
+            "strict": True
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_task",
+            "description": "Mark a task/reminder as completed using its unique task ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "The unique ID of the task to complete."
+                    }
+                },
+                "required": ["task_id"],
+                "additionalProperties": False
+            },
+            "strict": True
+        }
+    }
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Core LLM Routine
+# ─────────────────────────────────────────────────────────────────────────────
+
 def generate_karen_response(user_message: str, conversation_history: list = None) -> str:
-    """Generates a response in Karen's signature snarky and proactive persona."""
+    """Generates a response in Karen's signature persona, executing tools if requested by the LLM."""
     openai_client = get_openai_client()
     model = get_model_name()
 
@@ -37,7 +133,6 @@ KNOWN USER INFORMATION & MEMORIES:
 
     messages = [{"role": "system", "content": system_prompt}]
     
-    # Append conversation history
     if conversation_history:
         for msg in conversation_history:
             messages.append(msg)
@@ -45,12 +140,53 @@ KNOWN USER INFORMATION & MEMORIES:
     messages.append({"role": "user", "content": user_message})
 
     try:
+        # Call OpenAI with tool support
         completion = openai_client.chat.completions.create(
             model=model,
             messages=messages,
+            tools=tools,
             temperature=0.7
         )
-        return completion.choices[0].message.content
+        
+        response_msg = completion.choices[0].message
+        
+        # Check if the model requested any tool executions
+        if response_msg.tool_calls:
+            # Append assistant message (with tool calls) to history
+            messages.append(response_msg)
+            
+            # Execute each tool call
+            for tool_call in response_msg.tool_calls:
+                func_name = tool_call.function.name
+                func_args = json.loads(tool_call.function.arguments)
+                
+                tool_result = ""
+                if func_name == "create_reminder":
+                    tool_result = create_reminder(
+                        title=func_args.get("title"),
+                        delay_minutes=func_args.get("delay_minutes")
+                    )
+                elif func_name == "complete_task":
+                    tool_result = complete_task(
+                        task_id=func_args.get("task_id")
+                    )
+                
+                # Append tool execution response to thread
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": tool_result
+                })
+            
+            # Request OpenAI for the final conversational reply now that tools have run
+            final_completion = openai_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.7
+            )
+            return final_completion.choices[0].message.content
+            
+        return response_msg.content
     except Exception as e:
         return f"Ugh, I hit a snag talking to my brain: {e}"
 
@@ -95,6 +231,5 @@ Karen: "{karen_response}"
 
 if __name__ == "__main__":
     # Quick test
-    import db
-    print("Testing Karen's voice...")
-    print("Karen:", generate_karen_response("I should work, but I want to watch TV."))
+    print("Testing Karen's voice and tools...")
+    print("Karen:", generate_karen_response("remind me in 5 minutes to drink tea"))

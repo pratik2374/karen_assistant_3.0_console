@@ -126,6 +126,27 @@ def stream_startup_greeting():
     print("\n")
 
 def run_cli():
+    # Prompt user for voice input mode (default is N)
+    print(f"{Fore.WHITE}Do you want to use voice input? [y/N]: ", end="")
+    try:
+        choice = input().strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        choice = ""
+        
+    voice_input_mode = False
+    recorder = None
+    if choice == "y":
+        try:
+            from RealtimeSTT import AudioToTextRecorder
+            print(f"{Fore.CYAN}[System] Initializing RealtimeSTT microphone recorder (using tiny.en)...{Fore.RESET}")
+            recorder = AudioToTextRecorder(model="tiny.en")
+            voice_input_mode = True
+            print(f"{Fore.GREEN}[System] Voice mode activated. Speak after 'karen (listening...)>'.{Fore.RESET}\n")
+        except ImportError:
+            print(f"{Fore.RED}[System Error] RealtimeSTT not found. Falling back to text mode.{Fore.RESET}")
+            print(f"{Fore.YELLOW}To install voice mode, run: pip install RealtimeSTT{Fore.RESET}\n")
+            voice_input_mode = False
+            
     # Start lazy loading ChatTTS
     voice_service.load_chattts_lazy()
     
@@ -142,8 +163,14 @@ def run_cli():
     
     while True:
         try:
-            # Prompt cyan format
-            query = input(f"{Fore.CYAN}karen> {Fore.RESET}").strip()
+            if voice_input_mode and recorder:
+                print(f"{Fore.CYAN}karen (listening...)> {Fore.RESET}", end="", flush=True)
+                query = recorder.text().strip()
+                # Print recognized text so it shows in the chat transcript log
+                print(f"{Fore.WHITE}{query}")
+            else:
+                # Prompt cyan format
+                query = input(f"{Fore.CYAN}karen> {Fore.RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print(f"\n{Fore.YELLOW}Session closed. Bye!")
             break

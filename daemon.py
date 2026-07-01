@@ -56,9 +56,9 @@ def process_active_sagas():
             # Show toast with action buttons
             show_escalation_toast("Upcoming Task Warning", message, task_id)
             
-            # Set Check-In wakeup: start_time + 15 minutes (or 1 minute if starts in less than 5 minutes)
+            # Set Check-In wakeup: start_time + 15 minutes (or 1 minute if starts in less than 10 minutes)
             time_to_start = start_time_dt - now_utc
-            if time_to_start <= timedelta(minutes=5):
+            if time_to_start <= timedelta(minutes=10):
                 check_in_time = start_time_dt + timedelta(minutes=1)
             else:
                 check_in_time = start_time_dt + timedelta(minutes=15)
@@ -87,10 +87,10 @@ def process_active_sagas():
             # Show toast with action buttons
             show_escalation_toast("Did you start yet?", message, task_id)
             
-            # Set Nudge wakeup: 10 minutes from now (or 1 minute for short-interval reminders)
+            # Set Nudge wakeup: 10 minutes from now (or 5 minutes for short-interval reminders < 10m)
             time_since_start = now_utc - start_time_dt
             if time_since_start <= timedelta(minutes=10):
-                nudge_time = now_utc + timedelta(minutes=1)
+                nudge_time = now_utc + timedelta(minutes=5)
             else:
                 nudge_time = now_utc + timedelta(minutes=10)
 

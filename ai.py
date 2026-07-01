@@ -32,11 +32,6 @@ def create_reminder(title: str, delay_minutes: int) -> str:
     # Calculate event start time
     start_time = now_utc + timedelta(minutes=delay_minutes)
     
-    # Pre-alert trigger time (10m before event, or 5s from now if starts sooner)
-    pre_alert_time = start_time - timedelta(minutes=10)
-    if pre_alert_time < now_utc:
-        pre_alert_time = now_utc + timedelta(seconds=5)
-        
     tasks_col.insert_one({
         "id": task_id,
         "title": title,
@@ -44,10 +39,11 @@ def create_reminder(title: str, delay_minutes: int) -> str:
         "status": "PENDING"
     })
     
+    # For dynamic reminders, we skip Stage 0 (Pre-Alert) and initialize at Stage 1 (Check-In)
     saga_states_col.insert_one({
         "task_id": task_id,
-        "current_stage": 0,
-        "next_wakeup": pre_alert_time.isoformat(),
+        "current_stage": 1,  # 1 = Check-In
+        "next_wakeup": start_time.isoformat(),
         "status": "ACTIVE"
     })
     

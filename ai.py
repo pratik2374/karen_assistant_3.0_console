@@ -92,6 +92,33 @@ def write_memory(fact: str) -> str:
         return f"Success: Recorded memory: '{fact}'"
     return "Memory already recorded."
 
+def open_links(category: str) -> str:
+    """Opens all web links associated with a specific category (e.g. 'dsa', 'dev') in the default web browser. Use this tool when the user starts a specific work category or grind session."""
+    import webbrowser
+    if not os.path.exists("links.json"):
+        return "Error: links.json file not found in workspace."
+        
+    try:
+        with open("links.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        category = category.lower().strip()
+        if category in data:
+            links = data[category].get("links", [])
+            if not links:
+                return f"No links found in category '{category}'."
+                
+            opened = []
+            for link in links:
+                webbrowser.open(link)
+                opened.append(link)
+            print(f"[Browser Tool] Opened {len(opened)} links for category '{category}' in browser.")
+            return f"Success: Opened the following links in browser: {', '.join(opened)}"
+        else:
+            return f"Category '{category}' not found. Available categories: {', '.join(data.keys())}"
+    except Exception as e:
+        return f"Error opening links: {e}"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Specialist Member Agents
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +195,7 @@ def get_karen_orchestrator():
         "You are the main coordinator. You have three delegate tools: delegate_to_calendar_agent, delegate_to_reminder_agent, and delegate_to_memory_agent.",
         "DIRECT ANSWER OPTION: If the user query is a simple greeting (e.g. 'hi', 'how are you'), a general joke, conversational banter, or does not require calendar/reminder/memory modifications, DO NOT delegate. Answer directly yourself in your typical snarky voice.",
         "DELEGATE OPTION: If the query requires calendar reading, reminder creating/completing, or memory operations, you MUST call the appropriate delegation tool.",
+        "OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session (e.g. 'lets grind DSA', 'do coding', 'dev work'), call the open_links tool with the matched category name (e.g. 'dsa' or 'dev').",
         f"CURRENT DATE & TIME: {now_str}",
         f"KNOWN USER FACTS:\n{facts_str}"
     ]
@@ -176,7 +204,7 @@ def get_karen_orchestrator():
         name="Karen Orchestrator",
         role="Primary coordinator. Replies directly to general conversation or delegates to specialists when needed.",
         model=get_agno_model(),
-        tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent],
+        tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, open_links],
         instructions=instructions
     )
 

@@ -1,0 +1,18 @@
+{
+  "dsa": {
+    "description": "DSA practice, coding, leetcode, job interviews, maintain coding things, write coding progress",
+    "links": [
+      "https://leetcode.com",
+      "https://www.geeksforgeeks.org",
+      "https://github.com"
+    ]
+  },
+  "dev": {
+    "description": "Development work, building apps, coding projects, git repositories, localhost servers",
+    "links": [
+      "https://github.com",
+      "https://stackoverflow.com",
+      "http://localhost:3000"
+    ]
+  }
+}

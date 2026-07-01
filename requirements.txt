@@ -1,7 +1,20 @@
+# Database & Core Client
 pymongo>=4.6.0
-openai>=1.12.0
+colorama>=0.4.6
+
+# Windows Desktop Integrations
 win11toast>=0.4.7
-requests>=2.31.0
+
+# Google APIs (Calendar Sync)
 google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.118.0
-colorama>=0.4.6
+requests>=2.31.0
+
+# Multi-Agent Orchestration
+agno>=2.5.16
+openai>=1.12.0
+
+# Conversational Voice Synthesis (Local ChatTTS)
+torch>=2.0.0
+soundfile>=0.12.1
+ChatTTS>=0.2.1

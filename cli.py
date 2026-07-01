@@ -87,6 +87,9 @@ def listen_for_live_alerts():
                 {"$set": {"processed": True}}
             )
             if alert:
+                # Speak the reminder/reaction alert vocally!
+                voice_service.speak_conversation(alert['message'])
+                
                 # We output with a carriage return \r to clear the current prompt line cleanly
                 print(f"\r\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}{alert['message']}\n")
                 # Reprint the prompt so the user can continue typing seamlessly
@@ -95,10 +98,39 @@ def listen_for_live_alerts():
             pass
         time.sleep(2)
 
+def stream_startup_greeting():
+    """Selects a random snarky greeting and streams it token-by-token (text + audio) on startup."""
+    import random
+    from voice_service import GREETINGS_QUOTES, VoiceStreamer
+    
+    # Ensure offline warning file is pre-cached
+    voice_service.ensure_utilities_cached()
+    
+    quote = random.choice(GREETINGS_QUOTES)
+    
+    print(f"{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}", end="", flush=True)
+    
+    # Initialize voice streamer
+    streamer = VoiceStreamer()
+    
+    # Stream words with slight delay to mimic generation
+    words = quote.split(" ")
+    for i, word in enumerate(words):
+        space = " " if i > 0 else ""
+        chunk = space + word
+        print(chunk, end="", flush=True)
+        streamer.push_chunk(chunk)
+        time.sleep(0.08) # Slower delay to simulate generation
+        
+    streamer.flush()
+    print("\n")
+
 def run_cli():
-    # Play random startup greeting and start lazy loading ChatTTS
-    voice_service.play_startup_greeting()
+    # Start lazy loading ChatTTS
     voice_service.load_chattts_lazy()
+    
+    # Stream the startup greeting quote (visual + audio streaming)
+    stream_startup_greeting()
     
     print_banner()
     

@@ -1,10 +1,12 @@
 import os
 import sys
 import random
+import socket
 import ctypes
 import asyncio
 import threading
 from datetime import datetime
+from colorama import Fore
 from db import live_alerts_col
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -68,8 +70,44 @@ GREETINGS_QUOTES = [
     "Welcome back, sir. Let's make the impossible feel embarrassed."
 ]
 
-# Directory to cache startup greetings
-GREETINGS_DIR = "greetings"
+# Cache directories
+UTILITIES_DIR = "utilities"
+OFFLINE_WARNING_FILE = os.path.join(UTILITIES_DIR, "offline_warning.mp3")
+OFFLINE_TEXT = "Connection error. I am currently disconnected from the internet. Some features may be unavailable."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Utility Functions
+# ─────────────────────────────────────────────────────────────────────────────
+def is_internet_available() -> bool:
+    """Checks internet connectivity by attempting a socket connection to a reliable DNS server."""
+    try:
+        # Connect to Google Public DNS
+        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        return True
+    except OSError:
+        return False
+
+async def generate_utilities_cache():
+    """Generates pre-cached utility voice clips if they don't exist yet."""
+    if not os.path.exists(UTILITIES_DIR):
+        os.makedirs(UTILITIES_DIR)
+        
+    import edge_tts
+    if not os.path.exists(OFFLINE_WARNING_FILE):
+        try:
+            communicate = edge_tts.Communicate(OFFLINE_TEXT, "en-US-AvaMultilingualNeural")
+            await communicate.save(OFFLINE_WARNING_FILE)
+            print("[Voice] Offline warning audio utility cached successfully.")
+        except Exception:
+            pass
+
+def ensure_utilities_cached():
+    """Synchronous wrapper to ensure utilities directory and clips exist."""
+    if not os.path.exists(OFFLINE_WARNING_FILE):
+        try:
+            asyncio.run(generate_utilities_cache())
+        except Exception:
+            pass
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Native Windows Audio Player (Zero-Dependency)
@@ -94,57 +132,6 @@ def play_audio_windows(filepath: str, wait: bool = True):
 def play_audio_async(filepath: str):
     """Plays audio file in a background daemon thread."""
     threading.Thread(target=play_audio_windows, args=(filepath, True), daemon=True).start()
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Edge-TTS Greetings Cache Generation
-# ─────────────────────────────────────────────────────────────────────────────
-async def generate_greetings_cache():
-    """Generates MP3 files for the startup quotes if they are not already cached."""
-    if not os.path.exists(GREETINGS_DIR):
-        os.makedirs(GREETINGS_DIR)
-        
-    import edge_tts
-    print("[Voice] Caching startup voice greetings... Please wait.")
-    
-    for i, quote in enumerate(GREETINGS_QUOTES):
-        output_file = os.path.join(GREETINGS_DIR, f"greet_{i}.mp3")
-        if not os.path.exists(output_file):
-            try:
-                communicate = edge_tts.Communicate(quote, "en-US-AvaMultilingualNeural")
-                await communicate.save(output_file)
-            except Exception as e:
-                print(f"[Voice] Error caching quote {i}: {e}")
-                
-    print("[Voice] Caching complete.")
-
-def ensure_greetings_cached():
-    """Synchronous wrapper to run greetings cache generator."""
-    # Check if we need to cache
-    needs_cache = False
-    if not os.path.exists(GREETINGS_DIR):
-        needs_cache = True
-    else:
-        files = os.listdir(GREETINGS_DIR)
-        if len(files) < len(GREETINGS_QUOTES):
-            needs_cache = True
-            
-    if needs_cache:
-        try:
-            asyncio.run(generate_greetings_cache())
-        except Exception as e:
-            print(f"[Voice] Could not cache greetings: {e}")
-
-def play_startup_greeting():
-    """Selects and plays a random cached startup greeting synchronously."""
-    ensure_greetings_cached()
-    
-    if os.path.exists(GREETINGS_DIR):
-        files = [f for f in os.listdir(GREETINGS_DIR) if f.endswith(".mp3")]
-        if files:
-            chosen = random.choice(files)
-            filepath = os.path.join(GREETINGS_DIR, chosen)
-            print("[Voice] Playing startup system check greeting...")
-            play_audio_windows(filepath, wait=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ChatTTS Conversational Voice
@@ -178,6 +165,14 @@ def speak_conversation(text: str):
     """Synthesizes text using local ChatTTS if available; otherwise falls back to Edge-TTS."""
     load_chattts_lazy() # Ensure we trigger loading
     
+    # Check internet first if local ChatTTS is not loaded
+    if not is_internet_available() and chat_model is None:
+        ensure_utilities_cached()
+        if os.path.exists(OFFLINE_WARNING_FILE):
+            play_audio_async(OFFLINE_WARNING_FILE)
+            print(f"\n{Fore.RED}[Voice Warning] Offline. Conversational audio playback disabled.{Fore.RESET}")
+            return
+
     global chat_model
     if chat_model is not None:
         def run_chattts():
@@ -273,16 +268,22 @@ class VoiceStreamer:
                     filename = f"temp_stream_{idx}_{random.randint(10,99)}.wav"
                     sf.write(filename, wavs[0][0], 24000)
                 else:
-                    # Fallback to Edge-TTS
-                    import edge_tts
-                    import asyncio
-                    filename = f"temp_stream_{idx}_{random.randint(10,99)}.mp3"
-                    
-                    async def save_voice():
-                        communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural")
-                        await communicate.save(filename)
+                    # Check internet before calling Edge-TTS
+                    if not is_internet_available():
+                        ensure_utilities_cached()
+                        if os.path.exists(OFFLINE_WARNING_FILE):
+                            filename = OFFLINE_WARNING_FILE
+                    else:
+                        # Fallback to Edge-TTS
+                        import edge_tts
+                        import asyncio
+                        filename = f"temp_stream_{idx}_{random.randint(10,99)}.mp3"
                         
-                    asyncio.run(save_voice())
+                        async def save_voice():
+                            communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural")
+                            await communicate.save(filename)
+                            
+                        asyncio.run(save_voice())
             except Exception:
                 filename = None
             finally:
@@ -308,8 +309,9 @@ class VoiceStreamer:
                 filepath = self.queue.get(timeout=1.0)
                 # Play synchronously (blocking this audio thread so they play in order!)
                 play_audio_windows(filepath, wait=True)
-                # Clean up file
-                if os.path.exists(filepath):
+                
+                # Clean up file ONLY if it is a temporary stream file (protects offline warning cache)
+                if filepath and "temp_stream_" in filepath and os.path.exists(filepath):
                     try:
                         os.remove(filepath)
                     except Exception:

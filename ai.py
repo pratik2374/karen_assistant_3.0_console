@@ -174,8 +174,7 @@ def get_karen_orchestrator():
         role="Primary coordinator. Replies directly to general conversation or delegates to specialists when needed.",
         model=get_agno_model(),
         tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent],
-        instructions=instructions,
-        show_tool_calls=True
+        instructions=instructions
     )
 
 def generate_karen_response(user_message: str, conversation_history: list = None) -> str:

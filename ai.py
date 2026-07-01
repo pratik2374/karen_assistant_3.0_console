@@ -40,6 +40,7 @@ def get_calendar() -> str:
             "id": t.get("id"),
             "title": t.get("title"),
             "start_time": t.get("start_time"),
+            "end_time": t.get("end_time"),
             "status": t.get("status")
         })
     return json.dumps(formatted, indent=2)

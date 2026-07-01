@@ -60,34 +60,36 @@ def sync_calendar_events():
             event_id = event.get('id')
             title = event.get('summary', 'Untitled Event')
             
-            # Get event start time
+            # Get event start and end times
             start = event.get('start', {})
             start_time_str = start.get('dateTime') or start.get('date')
             if not start_time_str:
                 continue
                 
-            # Normalize ISO start time
-            # For date-only start times (e.g. 2026-07-01), append time/timezone
+            end = event.get('end', {})
+            end_time_str = end.get('dateTime') or end.get('date') or start_time_str
+            
+            # Normalize ISO start/end times
             if len(start_time_str) == 10:
                 start_time_str += "T00:00:00Z"
+            if len(end_time_str) == 10:
+                end_time_str += "T00:00:00Z"
             
             # Check if task already exists
             existing_task = tasks_col.find_one({"id": event_id})
             
             if not existing_task:
-                # 1. Insert new task
+                # 1. Insert new task with end_time
                 tasks_col.insert_one({
                     "id": event_id,
                     "title": title,
                     "start_time": start_time_str,
+                    "end_time": end_time_str,
                     "status": "PENDING"
                 })
                 
                 # 2. Parse start date to set timer
-                # Trim offset indicator for datetime parsing (python < 3.11 compatible)
-                dt_str = start_time_str.split('+')[0].split('-')[0:3]
                 try:
-                    # Clean UTC timestamp parsing
                     dt = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
                 except Exception:
                     dt = datetime.strptime(start_time_str[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
@@ -110,8 +112,14 @@ def sync_calendar_events():
                 print(f"[Calendar] Synced new task: '{title}' (ID: {event_id}) starting at {start_time_str}")
             else:
                 # Event start time changed, update it if still pending
-                if existing_task["status"] == "PENDING" and existing_task.get("start_time") != start_time_str:
-                    tasks_col.update_one({"id": event_id}, {"$set": {"start_time": start_time_str}})
+                if existing_task["status"] == "PENDING" and (existing_task.get("start_time") != start_time_str or existing_task.get("end_time") != end_time_str):
+                    tasks_col.update_one(
+                        {"id": event_id},
+                        {"$set": {
+                            "start_time": start_time_str,
+                            "end_time": end_time_str
+                        }}
+                    )
                     
                     # Reschedule wakeup
                     try:

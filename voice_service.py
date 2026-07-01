@@ -109,6 +109,21 @@ def ensure_utilities_cached():
         except Exception:
             pass
 
+def safe_delete_file(filepath: str, retries: int = 5, delay: float = 0.2):
+    """Attempts to safely delete a file on Windows, retrying if locked by the audio player."""
+    if not filepath or not os.path.exists(filepath):
+        return
+        
+    import time
+    for _ in range(retries):
+        try:
+            os.remove(filepath)
+            return # Successfully deleted!
+        except PermissionError:
+            time.sleep(delay)
+        except Exception:
+            break
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Native Windows Audio Player (Zero-Dependency)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -179,11 +194,10 @@ def speak_conversation(text: str):
             try:
                 import soundfile as sf
                 wavs = chat_model.infer([text])
-                temp_file = "temp_karen_voice.wav"
+                temp_file = f"temp_karen_voice_{random.randint(1000, 9999)}.wav"
                 sf.write(temp_file, wavs[0][0], 24000)
                 play_audio_windows(temp_file, wait=True)
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
+                safe_delete_file(temp_file)
             except Exception:
                 pass
         threading.Thread(target=run_chattts, daemon=True).start()
@@ -194,7 +208,7 @@ def speak_conversation(text: str):
         try:
             import edge_tts
             import asyncio
-            temp_file = "temp_karen_voice.mp3"
+            temp_file = f"temp_karen_voice_{random.randint(1000, 9999)}.mp3"
             
             # Helper to run async save inside thread loop
             async def save_voice():
@@ -205,8 +219,7 @@ def speak_conversation(text: str):
             
             # Play and delete
             play_audio_windows(temp_file, wait=True)
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+            safe_delete_file(temp_file)
         except Exception as e:
             pass
 
@@ -311,11 +324,8 @@ class VoiceStreamer:
                 play_audio_windows(filepath, wait=True)
                 
                 # Clean up file ONLY if it is a temporary stream file (protects offline warning cache)
-                if filepath and "temp_stream_" in filepath and os.path.exists(filepath):
-                    try:
-                        os.remove(filepath)
-                    except Exception:
-                        pass
+                if filepath and "temp_stream_" in filepath:
+                    safe_delete_file(filepath)
                 self.queue.task_done()
             except queue.Empty:
                 continue
@@ -398,19 +408,14 @@ def transcribe_audio(filepath: str) -> str:
 
 def get_voice_input() -> str:
     """Records speech from microphone and returns the transcribed text."""
-    temp_wav = "temp_input.wav"
+    temp_wav = f"temp_input_{random.randint(1000, 9999)}.wav"
     try:
         if record_audio_vad(temp_wav):
             text = transcribe_audio(temp_wav)
-            if os.path.exists(temp_wav):
-                os.remove(temp_wav)
+            safe_delete_file(temp_wav)
             return text
     except Exception as e:
         print(f"[Voice Input Error] {e}")
     finally:
-        if os.path.exists(temp_wav):
-            try:
-                os.remove(temp_wav)
-            except Exception:
-                pass
+        safe_delete_file(temp_wav)
     return ""

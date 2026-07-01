@@ -86,9 +86,11 @@ def speak_conversation(text: str):
     def run():
         try:
             import soundfile as sf
-            wavs = chat_model.infer([text])
+            import numpy as np
+            wavs = chat_model.infer([text], show_tqdm=False)
+            audio_data = np.squeeze(wavs[0])
             temp_file = "temp_karen_voice.wav"
-            sf.write(temp_file, wavs[0][0], 24000)
+            sf.write(temp_file, audio_data, 24000)
             
             play_audio_windows(temp_file, wait=True)
             if os.path.exists(temp_file):

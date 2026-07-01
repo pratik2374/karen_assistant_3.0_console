@@ -7,6 +7,7 @@ from db import tasks_col, memories_col, saga_states_col, live_alerts_col
 from calendar_service import sync_calendar_events
 from protocol_handler import register_protocol
 import ai
+import voice_service
 
 # Initialize Colorama for cross-platform colored terminal output
 init(autoreset=True)
@@ -95,6 +96,10 @@ def listen_for_live_alerts():
         time.sleep(2)
 
 def run_cli():
+    # Play random startup greeting and start lazy loading ChatTTS
+    voice_service.play_startup_greeting()
+    voice_service.load_chattts_lazy()
+    
     print_banner()
     
     # Start background live alerts listener
@@ -142,6 +147,9 @@ def run_cli():
         
         # Output chatbot styled text
         print(f"\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}{response}\n")
+        
+        # Speak conversational response
+        voice_service.speak_conversation(response)
         
         # Append exchange to history
         conversation_history.append({"role": "user", "content": query})

@@ -324,3 +324,93 @@ class VoiceStreamer:
 
     def stop(self):
         self.running = False
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Custom Microphone Speech-to-Text (STT) Recorder
+# ─────────────────────────────────────────────────────────────────────────────
+def record_audio_vad(filepath: str, sample_rate: int = 16000, silence_threshold: float = 0.015, silence_duration: float = 1.3) -> bool:
+    """Records audio from microphone until silence is detected, saving it as a WAV file."""
+    import numpy as np
+    import sounddevice as sd
+    import soundfile as sf
+    
+    chunk_size = 1024
+    audio_data = []
+    
+    is_speaking = False
+    silence_chunks_limit = int((silence_duration * sample_rate) / chunk_size)
+    silence_chunks_count = 0
+    max_duration_seconds = 10
+    max_chunks = int((max_duration_seconds * sample_rate) / chunk_size)
+    
+    # We use a state dictionary to modify inside callback
+    state = {"recording": True, "chunks_recorded": 0}
+    
+    def callback(indata, frames, time, status):
+        if not state["recording"]:
+            raise sd.CallbackStop()
+            
+        # Calculate volume level
+        volume = np.linalg.norm(indata) / np.sqrt(len(indata))
+        audio_data.append(indata.copy())
+        state["chunks_recorded"] += 1
+        
+        nonlocal is_speaking, silence_chunks_count
+        if volume > silence_threshold:
+            if not is_speaking:
+                is_speaking = True
+            silence_chunks_count = 0
+        else:
+            if is_speaking:
+                silence_chunks_count += 1
+                if silence_chunks_count > silence_chunks_limit:
+                    state["recording"] = False
+                    
+        if state["chunks_recorded"] > max_chunks:
+            state["recording"] = False
+            
+    # Open input stream and record
+    with sd.InputStream(samplerate=sample_rate, channels=1, callback=callback, blocksize=chunk_size):
+        while state["recording"]:
+            sd.sleep(100)
+            
+    if audio_data:
+        recorded_audio = np.concatenate(audio_data, axis=0)
+        sf.write(filepath, recorded_audio, sample_rate)
+        return True
+    return False
+
+def transcribe_audio(filepath: str) -> str:
+    """Transcribes a WAV file using SpeechRecognition's Google speech-to-text API."""
+    import speech_recognition as sr
+    recognizer = sr.Recognizer()
+    
+    try:
+        with sr.AudioFile(filepath) as source:
+            audio = recognizer.record(source)
+        text = recognizer.recognize_google(audio)
+        return text
+    except sr.UnknownValueError:
+        return ""
+    except Exception as e:
+        print(f"[STT Error] Transcription failed: {e}")
+        return ""
+
+def get_voice_input() -> str:
+    """Records speech from microphone and returns the transcribed text."""
+    temp_wav = "temp_input.wav"
+    try:
+        if record_audio_vad(temp_wav):
+            text = transcribe_audio(temp_wav)
+            if os.path.exists(temp_wav):
+                os.remove(temp_wav)
+            return text
+    except Exception as e:
+        print(f"[Voice Input Error] {e}")
+    finally:
+        if os.path.exists(temp_wav):
+            try:
+                os.remove(temp_wav)
+            except Exception:
+                pass
+    return ""

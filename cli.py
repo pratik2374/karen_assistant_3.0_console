@@ -134,17 +134,15 @@ def run_cli():
         choice = ""
         
     voice_input_mode = False
-    recorder = None
     if choice == "y":
         try:
-            from RealtimeSTT import AudioToTextRecorder
-            print(f"{Fore.CYAN}[System] Initializing RealtimeSTT microphone recorder (using tiny.en)...{Fore.RESET}")
-            recorder = AudioToTextRecorder(model="tiny.en")
+            import sounddevice as sd
+            import speech_recognition as sr
             voice_input_mode = True
             print(f"{Fore.GREEN}[System] Voice mode activated. Speak after 'karen (listening...)>'.{Fore.RESET}\n")
         except ImportError:
-            print(f"{Fore.RED}[System Error] RealtimeSTT not found. Falling back to text mode.{Fore.RESET}")
-            print(f"{Fore.YELLOW}To install voice mode, run: pip install RealtimeSTT{Fore.RESET}\n")
+            print(f"{Fore.RED}[System Error] Speech-to-Text dependencies not found. Falling back to text mode.{Fore.RESET}")
+            print(f"{Fore.YELLOW}Please run: pip install sounddevice SpeechRecognition{Fore.RESET}\n")
             voice_input_mode = False
             
     # Start lazy loading ChatTTS
@@ -163,9 +161,9 @@ def run_cli():
     
     while True:
         try:
-            if voice_input_mode and recorder:
+            if voice_input_mode:
                 print(f"{Fore.CYAN}karen (listening...)> {Fore.RESET}", end="", flush=True)
-                query = recorder.text().strip()
+                query = voice_service.get_voice_input().strip()
                 # Print recognized text so it shows in the chat transcript log
                 print(f"{Fore.WHITE}{query}")
             else:

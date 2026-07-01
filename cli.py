@@ -126,8 +126,16 @@ def stream_startup_greeting():
     print("\n")
 
 def run_cli():
+    # Start lazy loading ChatTTS
+    voice_service.load_chattts_lazy()
+    
+    # Stream the startup greeting quote (visual + audio streaming)
+    stream_startup_greeting()
+    
+    print_banner()
+    
     # Prompt user for voice input mode (default is N)
-    print(f"{Fore.WHITE}Do you want to use voice input? [y/N]: ", end="")
+    print(f"{Fore.WHITE}Do you want to use voice input? [y/N]: ", end="", flush=True)
     try:
         choice = input().strip().lower()
     except (KeyboardInterrupt, EOFError):
@@ -145,14 +153,6 @@ def run_cli():
             print(f"{Fore.YELLOW}Please run: pip install sounddevice SpeechRecognition{Fore.RESET}\n")
             voice_input_mode = False
             
-    # Start lazy loading ChatTTS
-    voice_service.load_chattts_lazy()
-    
-    # Stream the startup greeting quote (visual + audio streaming)
-    stream_startup_greeting()
-    
-    print_banner()
-    
     # Start background live alerts listener
     t = threading.Thread(target=listen_for_live_alerts, daemon=True)
     t.start()

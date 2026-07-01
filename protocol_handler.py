@@ -62,15 +62,52 @@ def handle_protocol_action(url: str):
             res2 = saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
             print(f"[Protocol] Task {task_id} marked as STARTED. Saga stopped. Update counts: tasks={res1.modified_count}, sagas={res2.modified_count}")
             
+            # Generate dynamic snarky praise
+            import ai
+            from db import live_alerts_col
+            from datetime import datetime, timezone
+            
+            task_doc = tasks_col.find_one({"id": task_id})
+            title = task_doc["title"] if task_doc else "task"
+            
+            prompt = f"The user confirmed they started working on their task '{title}'. Write a quick snarky comment praising them, starting with 'Good, you are working' or similar."
+            message = ai.generate_karen_response(prompt)
+            
+            # Record alert
+            live_alerts_col.insert_one({
+                "message": message,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "processed": False
+            })
+            
             # Show confirmation toast
             from notifier import show_basic_toast
-            show_basic_toast("Success", f"Escalation stopped. I recorded that you started the task!")
+            show_basic_toast("Success", message)
 
         elif action == "not_yet":
             print(f"[Protocol] User selected 'Not Yet' for Task {task_id}. Saga remains active.")
+            
+            # Generate dynamic snooze mock
+            import ai
+            from db import live_alerts_col
+            from datetime import datetime, timezone
+            
+            task_doc = tasks_col.find_one({"id": task_id})
+            title = task_doc["title"] if task_doc else "task"
+            
+            prompt = f"The user selected 'Not Yet' (snooze) for their task '{title}'. Write a quick snarky comment mocking them for hitting snooze or procrastinating."
+            message = ai.generate_karen_response(prompt)
+            
+            # Record alert
+            live_alerts_col.insert_one({
+                "message": message,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "processed": False
+            })
+            
             # Show brief confirmation toast
             from notifier import show_basic_toast
-            show_basic_toast("Understood", "Reminder snoozed. Don't procrastinate too long!")
+            show_basic_toast("Understood", message)
 
         else:
             print(f"[Protocol] Unknown action: {action}")

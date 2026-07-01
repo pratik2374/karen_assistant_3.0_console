@@ -26,6 +26,7 @@ db = client[MONGO_DB_NAME]
 tasks_col = db["tasks"]
 saga_states_col = db["saga_states"]
 memories_col = db["memories"]
+live_alerts_col = db["live_alerts"]
 
 def init_db():
     """Initializes indexes on the collections for optimal query performance."""

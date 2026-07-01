@@ -1,7 +1,7 @@
 import time
 import os
 from datetime import datetime, timezone, timedelta
-from db import tasks_col, saga_states_col
+from db import tasks_col, saga_states_col, live_alerts_col
 from calendar_service import sync_calendar_events
 from notifier import show_escalation_toast
 import ai
@@ -56,6 +56,13 @@ def process_active_sagas():
             # Show toast with action buttons
             show_escalation_toast("Upcoming Task Warning", message, task_id)
             
+            # Log alert
+            live_alerts_col.insert_one({
+                "message": message,
+                "timestamp": now_utc.isoformat(),
+                "processed": False
+            })
+            
             # Set Check-In wakeup: start_time + 15 minutes (or 1 minute if starts in less than 10 minutes)
             time_to_start = start_time_dt - now_utc
             if time_to_start <= timedelta(minutes=10):
@@ -87,6 +94,13 @@ def process_active_sagas():
             # Show toast with action buttons
             show_escalation_toast("Did you start yet?", message, task_id)
             
+            # Log alert
+            live_alerts_col.insert_one({
+                "message": message,
+                "timestamp": now_utc.isoformat(),
+                "processed": False
+            })
+            
             # Set Nudge wakeup: 10 minutes from now (or 5 minutes for short-interval reminders < 10m)
             time_since_start = now_utc - start_time_dt
             if time_since_start <= timedelta(minutes=10):
@@ -113,6 +127,13 @@ def process_active_sagas():
             
             # Show final notification (no buttons needed, or keep buttons in case they start late)
             show_escalation_toast("I am disappointed in you", message, task_id)
+            
+            # Log alert
+            live_alerts_col.insert_one({
+                "message": message,
+                "timestamp": now_utc.isoformat(),
+                "processed": False
+            })
             
             # Mark task status as MISSED and stop saga
             tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})

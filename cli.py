@@ -1,7 +1,9 @@
 import sys
 import os
+import threading
+import time
 from colorama import init, Fore, Style
-from db import tasks_col, memories_col, saga_states_col
+from db import tasks_col, memories_col, saga_states_col, live_alerts_col
 from calendar_service import sync_calendar_events
 from protocol_handler import register_protocol
 import ai
@@ -75,8 +77,29 @@ def print_tasks():
         print(f"{start_time:<25} | {status_color}{task['status']:<10}{Fore.RESET} | {task['title']}")
     print("")
 
+def listen_for_live_alerts():
+    """Background thread polling live_alerts collection from MongoDB."""
+    while True:
+        try:
+            alert = live_alerts_col.find_one_and_update(
+                {"processed": False},
+                {"$set": {"processed": True}}
+            )
+            if alert:
+                # We output with a carriage return \r to clear the current prompt line cleanly
+                print(f"\r\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}{alert['message']}\n")
+                # Reprint the prompt so the user can continue typing seamlessly
+                print(f"{Fore.CYAN}karen> {Fore.RESET}", end="", flush=True)
+        except Exception:
+            pass
+        time.sleep(2)
+
 def run_cli():
     print_banner()
+    
+    # Start background live alerts listener
+    t = threading.Thread(target=listen_for_live_alerts, daemon=True)
+    t.start()
     
     conversation_history = []
     

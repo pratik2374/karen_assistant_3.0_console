@@ -1,7 +1,7 @@
 import time
 import os
 from datetime import datetime, timezone, timedelta
-from db import tasks_col, saga_states_col, live_alerts_col, missed_reasons_col
+from db import tasks_col, saga_states_col, live_alerts_col, missed_reasons_col, recurring_reminders_col, diary_prompts_col
 from calendar_service import sync_calendar_events
 from notifier import show_escalation_toast
 import ai
@@ -207,6 +207,55 @@ def check_expired_tasks():
         )
         print(f"[Daemon] Task '{title}' (ID: {task_id}) has expired (end_time passed). Marked as MISSED (was {old_status}).")
 
+def process_recurring_reminders():
+    """Checks active recurring reminders and task diaries and triggers prompts or alerts."""
+    now_utc = datetime.now(timezone.utc)
+    active_reminders = list(recurring_reminders_col.find({"active": True}))
+    
+    for r in active_reminders:
+        try:
+            last_fired_str = r.get("last_fired")
+            if not last_fired_str:
+                last_fired_str = now_utc.isoformat()
+                recurring_reminders_col.update_one({"_id": r["_id"]}, {"$set": {"last_fired": last_fired_str}})
+                
+            last_fired_dt = parse_iso_time(last_fired_str)
+            interval_mins = r["interval_minutes"]
+            
+            # Check if due
+            if now_utc >= last_fired_dt + timedelta(minutes=interval_mins):
+                title = r["title"]
+                r_type = r.get("type", "RECURRING_REMINDER")
+                
+                # Update last fired immediately
+                recurring_reminders_col.update_one({"_id": r["_id"]}, {"$set": {"last_fired": now_utc.isoformat()}})
+                
+                if r_type == "DIARY":
+                    # Trigger diary prompt in CLI
+                    diary_prompts_col.insert_one({
+                        "timestamp": now_utc.isoformat(),
+                        "processed": False
+                    })
+                    print(f"[Daemon] Dispatched diary check-in prompt.")
+                else:
+                    # Snarky water/stretch reminder alert
+                    prompt = f"Write a quick, snarky, punchy reminder warning the user to do their recurring activity: '{title}'."
+                    message = ai.generate_karen_response(prompt)
+                    
+                    # Show toast
+                    from notifier import show_basic_toast
+                    show_basic_toast(f"Reminder: {title.title()}", message)
+                    
+                    # Log alert
+                    live_alerts_col.insert_one({
+                        "message": message,
+                        "timestamp": now_utc.isoformat(),
+                        "processed": False
+                    })
+                    print(f"[Daemon] Fired recurring reminder alert for '{title}'.")
+        except Exception as e:
+            print(f"[Daemon Error] Error processing recurring reminder: {e}")
+
 def main_loop():
     print("=" * 60)
     print("           KAREN DAEMON  ·  Background Scheduler            ")
@@ -230,7 +279,10 @@ def main_loop():
             # 2. Check and mark expired tasks as MISSED
             check_expired_tasks()
             
-            # 3. Check if it's time to sync calendar events (every 5 minutes)
+            # 3. Process active recurring reminders and diaries
+            process_recurring_reminders()
+            
+            # 4. Check if it's time to sync calendar events (every 5 minutes)
             if time.time() - last_sync_time >= sync_interval_seconds:
                 print("[Daemon] Running periodic Google Calendar sync...")
                 sync_calendar_events()

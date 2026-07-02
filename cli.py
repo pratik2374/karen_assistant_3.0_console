@@ -3,11 +3,13 @@ import os
 import threading
 import time
 from colorama import init, Fore, Style
-from db import tasks_col, memories_col, saga_states_col, live_alerts_col
+from db import tasks_col, memories_col, saga_states_col, live_alerts_col, diary_prompts_col
 from calendar_service import sync_calendar_events
 from protocol_handler import register_protocol
 import ai
 import voice_service
+import csv
+from datetime import datetime
 
 # Initialize Colorama for cross-platform colored terminal output
 init(autoreset=True)
@@ -160,6 +162,43 @@ def run_cli():
     conversation_history = []
     
     while True:
+        # Check for pending task diary check-ins before displaying normal prompt
+        try:
+            pending_diary = diary_prompts_col.find_one_and_update(
+                {"processed": False},
+                {"$set": {"processed": True}}
+            )
+            if pending_diary:
+                print(f"\n{Fore.YELLOW}{Style.BRIGHT}[Task Diary Check-in]{Fore.RESET}")
+                
+                # Snarky vocal voice prompts
+                voice_service.speak_conversation("Task diary check-in. What should you be doing right now?")
+                should_be_doing = input(f"{Fore.GREEN}What should you be doing right now? {Fore.RESET}").strip()
+                
+                voice_service.speak_conversation("And what are you actually doing?")
+                actually_doing = input(f"{Fore.GREEN}What are you actually doing? {Fore.RESET}").strip()
+                
+                # Append check-in to CSV
+                csv_file = "task_diary.csv"
+                file_exists = os.path.exists(csv_file)
+                try:
+                    with open(csv_file, "a", newline="", encoding="utf-8") as f:
+                        writer = csv.writer(f)
+                        if not file_exists:
+                            writer.writerow(["Timestamp", "Should Be Doing", "Actually Doing"])
+                        writer.writerow([
+                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            should_be_doing,
+                            actually_doing
+                        ])
+                    confirm_msg = "Diary entry recorded. Now go back to what you should be doing."
+                    print(f"{Fore.BLUE}[Task Diary] Entry recorded in '{csv_file}'. Go back to what you should be doing.{Fore.RESET}\n")
+                    voice_service.speak_conversation(confirm_msg)
+                except Exception as e:
+                    print(f"{Fore.RED}[Task Diary Error] Failed to write entry to CSV: {e}{Fore.RESET}\n")
+        except Exception:
+            pass
+
         try:
             if voice_input_mode:
                 print(f"{Fore.CYAN}karen (listening...)> {Fore.RESET}", end="", flush=True)
@@ -194,6 +233,30 @@ def run_cli():
             elif cmd == "/register":
                 print(f"{Fore.CYAN}Registering Windows custom protocol handler...")
                 register_protocol()
+            elif cmd.startswith("/water"):
+                parts = cmd.split(" ")
+                if len(parts) > 1 and parts[1] == "stop":
+                    res = ai.stop_recurring_reminder("drink water")
+                    print(f"{Fore.GREEN}{res}")
+                else:
+                    try:
+                        interval = int(parts[1]) if len(parts) > 1 else 37
+                        res = ai.start_recurring_reminder("drink water", interval)
+                        print(f"{Fore.GREEN}{res}")
+                    except ValueError:
+                        print(f"{Fore.RED}Usage: /water <interval_minutes> or /water stop")
+            elif cmd.startswith("/diary"):
+                parts = cmd.split(" ")
+                if len(parts) > 1 and parts[1] == "stop":
+                    res = ai.stop_task_diary()
+                    print(f"{Fore.GREEN}{res}")
+                else:
+                    try:
+                        interval = int(parts[1]) if len(parts) > 1 else 60
+                        res = ai.start_task_diary(interval)
+                        print(f"{Fore.GREEN}{res}")
+                    except ValueError:
+                        print(f"{Fore.RED}Usage: /diary <interval_minutes> or /diary stop")
             else:
                 print(f"{Fore.RED}Unknown command: {query}. Type {Fore.YELLOW}/help{Fore.RED} for commands list.")
             continue

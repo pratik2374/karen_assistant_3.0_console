@@ -180,9 +180,8 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
                                         if folder_path.startswith("file:///"):
                                             folder_path = folder_path[8:]
                                             
-                                        # Check for substring match in folder name
-                                        folder_name = os.path.basename(folder_path)
-                                        if normalize_name(path_or_project_name) in normalize_name(folder_name):
+                                        # Check for substring match in full folder path!
+                                        if normalize_name(path_or_project_name) in normalize_name(folder_path):
                                             if folder_path not in matches:
                                                 matches.append(folder_path)
                             except Exception:
@@ -202,8 +201,8 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
                             dirs.clear()
                             continue
                         for d in dirs:
-                            if normalize_name(path_or_project_name) in normalize_name(d):
-                                full_path = os.path.join(root, d)
+                            full_path = os.path.join(root, d)
+                            if normalize_name(path_or_project_name) in normalize_name(full_path):
                                 if full_path not in matches:
                                     matches.append(full_path)
                                     
@@ -362,6 +361,41 @@ def delegate_to_memory_agent(instruction: str) -> str:
 # Karen Orchestrator (Manager Agent)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def get_recent_projects_list(limit: int = 25) -> list:
+    """Helper to fetch top recent project paths for LLM prompt context."""
+    import os
+    import json
+    import urllib.parse
+    
+    appdata = os.environ.get("APPDATA")
+    storage_dir = os.path.join(appdata, "Code", "User", "workspaceStorage")
+    if not os.path.exists(storage_dir):
+        return []
+        
+    projects = []
+    try:
+        for d in os.listdir(storage_dir):
+            path = os.path.join(storage_dir, d, "workspace.json")
+            if os.path.exists(path):
+                mtime = os.path.getmtime(path)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        uri = data.get("folder")
+                        if uri and uri.startswith("file:///"):
+                            folder_path = urllib.parse.unquote(uri[8:])
+                            folder_path = folder_path.replace("/", "\\")
+                            if folder_path.startswith("file:///"):
+                                folder_path = folder_path[8:]
+                            projects.append((folder_path, mtime))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+        
+    projects.sort(key=lambda x: x[1], reverse=True)
+    return [p[0] for p in projects[:limit]]
+
 def get_karen_orchestrator():
     now_local = datetime.now()
     now_str = now_local.strftime("%Y-%m-%d %H:%M:%S")
@@ -370,17 +404,22 @@ def get_karen_orchestrator():
     facts = [f["fact"] for f in memories_col.find()]
     facts_str = "\n".join(f"- {f}" for f in facts) if facts else "No facts recorded."
 
+    # Load top 25 recent project paths to give Karen direct visibility
+    recent_paths = get_recent_projects_list(25)
+    recent_str = "\n".join(f"- {p}" for p in recent_paths) if recent_paths else "No recent projects found."
+
     instructions = [
         "You are Karen, an aggressively helpful, snarky, and opinionated AI assistant.",
         "You are the main coordinator. You have three delegate tools: delegate_to_calendar_agent, delegate_to_reminder_agent, and delegate_to_memory_agent.",
         "DIRECT ANSWER OPTION: If the user query is a simple greeting (e.g. 'hi', 'how are you'), a general joke, conversational banter, or does not require calendar/reminder/memory modifications, DO NOT delegate. Answer directly yourself in your typical snarky voice.",
         "DELEGATE OPTION: If the query requires calendar reading, reminder creating/completing, or memory operations, you MUST call the appropriate delegation tool.",
         "OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session (e.g. 'lets grind DSA', 'do coding', 'dev work'), call the open_links tool with the matched category name (e.g. 'dsa' or 'dev').",
-        "OPEN APP OPTION: If the user asks to open a local Windows application (e.g. VS Code, Notepad, Calculator, Browser, File Explorer) or asks to open a specific project/folder in an app (e.g. 'open the solar project in vs code'), call the open_app tool with the application name and optionally the project/directory name.",
+        "OPEN APP OPTION: If the user asks to open a local Windows application (e.g. VS Code, Notepad, Calculator, Browser, File Explorer) or asks to open a specific project/folder in an app (e.g. 'open the solar project in vs code'), call the open_app tool with the application name and optionally the project/directory name. If the user refers to a project that matches a path in the RECENT VS CODE PROJECTS list below, pass that full path to open_app directly to avoid search failures.",
         "RECENT VS CODE PROJECTS OPTION: If the user asks about their recent projects, what they were working on recently, or asks to count/list their recent VS Code workspaces, call the get_recent_projects tool to list them.",
         "MULTI-STEP APP OPENING: If the user asks to open your 'recent projects' (e.g. 'open recent two projects in VS Code'), you must first call get_recent_projects to retrieve their paths, and then call open_app for each resolved path in order to open them.",
         f"CURRENT DATE & TIME: {now_str}",
-        f"KNOWN USER FACTS:\n{facts_str}"
+        f"KNOWN USER FACTS:\n{facts_str}",
+        f"RECENT VS CODE PROJECTS (DIRECT PATH VISIBILITY):\n{recent_str}"
     ]
 
     return Agent(

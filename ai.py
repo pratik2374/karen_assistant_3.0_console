@@ -179,6 +179,75 @@ def record_missed_reason(task_id: str, reason: str) -> str:
     print(f"[Missed Reasons Tool] Saved reason for task {task_id}: {reason}")
     return f"Success: Recorded reason for missed task {task_id}."
 
+def start_recurring_reminder(title: str, interval_minutes: int) -> str:
+    """Starts a recurring reminder that fires at a specific interval.
+    
+    Args:
+        title (str): The reminder title (e.g. 'drink water').
+        interval_minutes (int): The interval in minutes (e.g. 37, 60).
+    """
+    from db import recurring_reminders_col
+    
+    recurring_reminders_col.update_one(
+        {"title": title.lower().strip()},
+        {"$set": {
+            "title": title.lower().strip(),
+            "interval_minutes": interval_minutes,
+            "last_fired": datetime.now(timezone.utc).isoformat(),
+            "active": True,
+            "type": "RECURRING_REMINDER"
+        }},
+        upsert=True
+    )
+    print(f"[Recurring Reminder] Started recurring reminder '{title}' every {interval_minutes} minutes.")
+    return f"Success: Started recurring reminder '{title}' every {interval_minutes} minutes."
+
+def stop_recurring_reminder(title: str) -> str:
+    """Stops an active recurring reminder.
+    
+    Args:
+        title (str): The reminder title to stop (e.g. 'drink water').
+    """
+    from db import recurring_reminders_col
+    
+    res = recurring_reminders_col.update_one(
+        {"title": title.lower().strip()},
+        {"$set": {"active": False}}
+    )
+    if res.matched_count == 0:
+        return f"Error: Recurring reminder '{title}' not found."
+    return f"Success: Stopped recurring reminder '{title}'."
+
+def start_task_diary(interval_minutes: int = 60) -> str:
+    """Activates the hourly task diary system, prompting the user for check-ins."""
+    from db import recurring_reminders_col
+    
+    recurring_reminders_col.update_one(
+        {"title": "task diary"},
+        {"$set": {
+            "title": "task diary",
+            "interval_minutes": interval_minutes,
+            "last_fired": datetime.now(timezone.utc).isoformat(),
+            "active": True,
+            "type": "DIARY"
+        }},
+        upsert=True
+    )
+    print(f"[Task Diary] Activated task diary check-ins every {interval_minutes} minutes.")
+    return f"Success: Activated task diary check-ins every {interval_minutes} minutes."
+
+def stop_task_diary() -> str:
+    """Deactivates the hourly task diary check-in prompt."""
+    from db import recurring_reminders_col
+    
+    res = recurring_reminders_col.update_one(
+        {"title": "task diary"},
+        {"$set": {"active": False}}
+    )
+    if res.matched_count == 0:
+        return "Error: Task diary was not active."
+    return "Success: Deactivated task diary check-ins."
+
 def read_memories() -> str:
     """Retrieves saved insights, preferences, and facts about the user."""
     facts = [f["fact"] for f in memories_col.find()]
@@ -557,7 +626,8 @@ def get_karen_orchestrator():
         tools=[
             delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, 
             open_links, open_app, get_recent_projects,
-            list_reminders, update_task_or_reminder, delete_reminder, clear_all_reminders, record_missed_reason
+            list_reminders, update_task_or_reminder, delete_reminder, clear_all_reminders, record_missed_reason,
+            start_recurring_reminder, stop_recurring_reminder, start_task_diary, stop_task_diary
         ],
         instructions=instructions
     )

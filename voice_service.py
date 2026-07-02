@@ -124,6 +124,24 @@ def safe_delete_file(filepath: str, retries: int = 5, delay: float = 0.2):
         except Exception:
             break
 
+def clean_speech_text(text: str) -> str:
+    """Converts file paths in text to friendly folder names for clean voice synthesis."""
+    import re
+    import os
+    
+    # Matches Windows paths starting with drive letter, e.g. D:\path\to\folder
+    path_pattern = r'[a-zA-Z]:[\\/][\w\s\.-]+(?:[\\/][\w\s\.-]+)*'
+    
+    def replace_path(match):
+        path_str = match.group(0).strip()
+        basename = os.path.basename(path_str.rstrip('\\/'))
+        if basename.endswith(':'):
+            return basename
+        # Clean up underscores and dashes for natural speech
+        return basename.replace('_', ' ').replace('-', ' ')
+        
+    return re.sub(path_pattern, replace_path, text)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Native Windows Audio Player (Zero-Dependency)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -180,6 +198,9 @@ def speak_conversation(text: str):
     """Synthesizes text using local ChatTTS if available; otherwise falls back to Edge-TTS."""
     global chat_model
     load_chattts_lazy() # Ensure we trigger loading
+    
+    # Clean text for speech output
+    text = clean_speech_text(text)
     
     # Check internet first if local ChatTTS is not loaded
     if not is_internet_available() and chat_model is None:
@@ -267,6 +288,11 @@ class VoiceStreamer:
 
     def _synthesize_async(self, sentence: str):
         """Spawns a background thread to synthesize the sentence and queue the filename in order."""
+        # Clean sentence for speech output
+        sentence = clean_speech_text(sentence)
+        if not sentence.strip():
+            return
+            
         idx = self.index
         self.index += 1
         

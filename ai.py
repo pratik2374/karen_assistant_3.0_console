@@ -159,6 +159,9 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
         else:
             matches = []
             
+            def normalize_name(name: str) -> str:
+                return name.lower().replace("_", "").replace("-", "").replace(" ", "")
+            
             # Step 1: Search in VS Code recently opened workspaces history first!
             appdata = os.environ.get("APPDATA")
             storage_dir = os.path.join(appdata, "Code", "User", "workspaceStorage")
@@ -178,8 +181,8 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
                                             folder_path = folder_path[8:]
                                             
                                         # Check for substring match in folder name
-                                        folder_name = os.path.basename(folder_path).lower()
-                                        if path_or_project_name.lower() in folder_name:
+                                        folder_name = os.path.basename(folder_path)
+                                        if normalize_name(path_or_project_name) in normalize_name(folder_name):
                                             if folder_path not in matches:
                                                 matches.append(folder_path)
                             except Exception:
@@ -199,7 +202,7 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
                             dirs.clear()
                             continue
                         for d in dirs:
-                            if path_or_project_name.lower() in d.lower():
+                            if normalize_name(path_or_project_name) in normalize_name(d):
                                 full_path = os.path.join(root, d)
                                 if full_path not in matches:
                                     matches.append(full_path)

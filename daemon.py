@@ -44,27 +44,78 @@ def process_active_sagas():
         title = task["title"]
         start_time_dt = parse_iso_time(task["start_time"])
 
-        # Check if reminder is too late to fire (recovery window logic: now_utc > start_time_dt + delay_minutes)
+        # Check if task/reminder is too old to fire (e.g. if daemon was started late)
+        # If the event's end_time is in the past, or if we are more than 25 minutes past start_time, it is expired.
+        end_time_dt = None
+        if task.get("end_time"):
+            try:
+                end_time_dt = parse_iso_time(task["end_time"])
+            except Exception:
+                pass
+
+        is_expired = False
+        if end_time_dt and now_utc > end_time_dt:
+            is_expired = True
+        elif now_utc > start_time_dt + timedelta(minutes=25):
+            is_expired = True
+
+        # Also respect delay_minutes if present for custom reminders
         delay_minutes = task.get("delay_minutes")
         if delay_minutes is not None:
             max_firing_time = start_time_dt + timedelta(minutes=delay_minutes)
             if now_utc > max_firing_time:
-                # Too old! Mark task as MISSED and stop saga
-                tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
-                saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
-                # Insert default "User not specified" reason, but should_ask=False
-                missed_reasons_col.update_one(
-                    {"task_id": task_id},
-                    {"$setOnInsert": {
-                        "task_id": task_id,
-                        "reason": "User not specified",
-                        "timestamp": now_utc.isoformat(),
-                        "should_ask": False
-                    }},
-                    upsert=True
-                )
-                print(f"[Daemon] Terminated saga for reminder '{title}' (ID: {task_id}) since it is too late to fire (recovery window passed: {now_utc.isoformat()} > {max_firing_time.isoformat()})")
-                continue
+                is_expired = True
+
+        if is_expired:
+            # Too old! Mark task as MISSED and stop saga silently without toasts or messages
+            tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
+            saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+            # Log missed reason silently (should_ask = False)
+            missed_reasons_col.update_one(
+                {"task_id": task_id},
+                {"$setOnInsert": {
+                    "task_id": task_id,
+                    "reason": "User not specified",
+                    "timestamp": now_utc.isoformat(),
+                    "should_ask": False
+                }},
+                upsert=True
+            )
+            print(f"[Daemon] Silently terminated expired/past saga for '{title}' (ID: {task_id}).")
+            continue
+
+        # Catch-up logic for daemon starting up late:
+        # If we are past the start time, skip pre-alerts (Stage 0) or check-ins (Stage 1) that are in the past
+        if now_utc > start_time_dt:
+            if stage == 0:
+                if now_utc <= start_time_dt + timedelta(minutes=15):
+                    # Advance to Stage 1 silently (Check-In scheduled at start_time + 15 minutes)
+                    check_in_time = start_time_dt + timedelta(minutes=15)
+                    saga_states_col.update_one(
+                        {"task_id": task_id},
+                        {"$set": {"current_stage": 1, "next_wakeup": check_in_time.isoformat()}}
+                    )
+                    print(f"[Daemon] Catch-up: skipped Stage 0 for '{title}'. Advanced to Stage 1.")
+                    continue
+                elif now_utc <= start_time_dt + timedelta(minutes=25):
+                    # Advance to Stage 2 silently (Nudge scheduled at start_time + 25 minutes)
+                    nudge_time = start_time_dt + timedelta(minutes=25)
+                    saga_states_col.update_one(
+                        {"task_id": task_id},
+                        {"$set": {"current_stage": 2, "next_wakeup": nudge_time.isoformat()}}
+                    )
+                    print(f"[Daemon] Catch-up: skipped Stage 0 & 1 for '{title}'. Advanced to Stage 2.")
+                    continue
+            elif stage == 1:
+                if now_utc > start_time_dt + timedelta(minutes=15) and now_utc <= start_time_dt + timedelta(minutes=25):
+                    # Advance to Stage 2 silently (Nudge scheduled at start_time + 25 minutes)
+                    nudge_time = start_time_dt + timedelta(minutes=25)
+                    saga_states_col.update_one(
+                        {"task_id": task_id},
+                        {"$set": {"current_stage": 2, "next_wakeup": nudge_time.isoformat()}}
+                    )
+                    print(f"[Daemon] Catch-up: skipped Stage 1 for '{title}'. Advanced to Stage 2.")
+                    continue
 
         print(f"[Daemon] Processing Saga Stage {stage} for task: '{title}' (ID: {task_id})")
 

@@ -156,22 +156,30 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
         if os.path.exists(path_or_project_name):
             target_path = path_or_project_name
         else:
-            # Search for a matching directory under d:\Codes\Project
-            base_dir = "d:\\Codes\\Project"
-            if os.path.exists(base_dir):
-                try:
-                    subdirs = [os.path.join(base_dir, d) for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
-                    # Look for exact or fuzzy match
-                    match = None
-                    for s in subdirs:
-                        folder_name = os.path.basename(s).lower()
-                        if path_or_project_name.lower() in folder_name:
-                            match = s
+            # Recursive scan up to depth 3 under each search base
+            search_bases = ["d:\\Codes\\Project", "d:\\Work"]
+            match = None
+            for base in search_bases:
+                if not os.path.exists(base):
+                    continue
+                # Traverse base
+                for root, dirs, files in os.walk(base):
+                    # Restrict depth to 3
+                    depth = root[len(base):].count(os.sep)
+                    if depth > 3:
+                        dirs.clear()
+                        continue
+                    # Check if project name is inside folder name
+                    for d in dirs:
+                        if path_or_project_name.lower() in d.lower():
+                            match = os.path.join(root, d)
                             break
                     if match:
-                        target_path = match
-                except Exception:
-                    pass
+                        break
+                if match:
+                    break
+            if match:
+                target_path = match
                     
     # Execute the command
     try:
@@ -205,6 +213,57 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
             return f"Executed command: {cmd}"
     except Exception as e:
         return f"Failed to open app '{app_name}': {e}"
+
+def get_recent_projects(limit: int = 10) -> str:
+    """Fetches the list of recently opened VS Code workspace directories/projects on this machine.
+    
+    Args:
+        limit (int): The number of recent projects to return (default: 10).
+    """
+    import os
+    import json
+    import urllib.parse
+    from datetime import datetime
+    
+    appdata = os.environ.get("APPDATA")
+    storage_dir = os.path.join(appdata, "Code", "User", "workspaceStorage")
+    if not os.path.exists(storage_dir):
+        return "No recently opened VS Code workspaces found on this system."
+        
+    projects = []
+    try:
+        for d in os.listdir(storage_dir):
+            path = os.path.join(storage_dir, d, "workspace.json")
+            if os.path.exists(path):
+                mtime = os.path.getmtime(path)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        uri = data.get("folder")
+                        if uri and uri.startswith("file:///"):
+                            folder_path = urllib.parse.unquote(uri[8:])
+                            folder_path = folder_path.replace("/", "\\")
+                            if folder_path.startswith("file:///"):
+                                folder_path = folder_path[8:]
+                            projects.append((folder_path, mtime))
+                except Exception:
+                    pass
+    except Exception as e:
+        return f"Error scanning recent workspace directories: {e}"
+        
+    if not projects:
+        return "No recent VS Code projects could be retrieved."
+        
+    # Sort by mtime descending (most recent first)
+    projects.sort(key=lambda x: x[1], reverse=True)
+    
+    # Take limit
+    result = []
+    for proj, mtime in projects[:limit]:
+        dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+        result.append(f"- {proj} (Last accessed: {dt})")
+        
+    return f"Here are your {len(result)} most recently opened projects in VS Code:\n" + "\n".join(result)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Specialist Member Agents
@@ -284,6 +343,7 @@ def get_karen_orchestrator():
         "DELEGATE OPTION: If the query requires calendar reading, reminder creating/completing, or memory operations, you MUST call the appropriate delegation tool.",
         "OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session (e.g. 'lets grind DSA', 'do coding', 'dev work'), call the open_links tool with the matched category name (e.g. 'dsa' or 'dev').",
         "OPEN APP OPTION: If the user asks to open a local Windows application (e.g. VS Code, Notepad, Calculator, Browser, File Explorer) or asks to open a specific project/folder in an app (e.g. 'open the solar project in vs code'), call the open_app tool with the application name and optionally the project/directory name.",
+        "RECENT VS CODE PROJECTS OPTION: If the user asks about their recent projects, what they were working on recently, or asks to count/list their recent VS Code workspaces, call the get_recent_projects tool to list them.",
         f"CURRENT DATE & TIME: {now_str}",
         f"KNOWN USER FACTS:\n{facts_str}"
     ]
@@ -292,7 +352,7 @@ def get_karen_orchestrator():
         name="Karen Orchestrator",
         role="Primary coordinator. Replies directly to general conversation or delegates to specialists when needed.",
         model=get_agno_model(),
-        tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, open_links, open_app],
+        tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, open_links, open_app, get_recent_projects],
         instructions=instructions
     )
 

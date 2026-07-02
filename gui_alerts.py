@@ -102,12 +102,12 @@ def play_water_audio_and_animation():
         canvas.delete("splash")
         
         if state["stage"] == 0:
-            # Stage 0: Droplet falling
+            # Stage 0: Droplet falling (10-20% larger droplet size)
             state["drop_y"] += 6
             y1 = state["drop_y"]
             canvas.create_oval(
-                width // 2 - 6, y1 - 4,
-                width // 2 + 6, y1 + 10,
+                width // 2 - 7, y1 - 5,
+                width // 2 + 7, y1 + 12,
                 fill=accent_color, outline="#00e5ff", width=2, tags="drop"
             )
             # Check collision with water level (y = 250)
@@ -151,16 +151,20 @@ def play_water_audio_and_animation():
             if state["splash_r"] >= 65:
                 state["stage"] = 2
                 
-        elif state["stage"] == 2:
-            # Stage 2: Hold open until speech finishes
-            # Draw static calm water line
-            canvas.create_line(
-                width // 2 - 40, 250,
-                width // 2 + 40, 250,
-                fill=accent_color, width=2, tags="splash"
-            )
-            if speech_finished:
-                root.destroy()
+                # Draw the static calm water line once at the base (no tags so it is never deleted)
+                canvas.create_line(
+                    width // 2 - 40, 250,
+                    width // 2 + 40, 250,
+                    fill=accent_color, width=2
+                )
+                
+                # Stop high-frequency animation loop, switch to static speech poll loop
+                def poll_speech():
+                    if speech_finished:
+                        root.destroy()
+                    else:
+                        root.after(100, poll_speech)
+                poll_speech()
                 return
             
         root.after(16, animate) # ~60fps

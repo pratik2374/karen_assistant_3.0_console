@@ -94,6 +94,30 @@ def cleanup_temp_files():
 # Run startup temp voice files cleanup
 cleanup_temp_files()
 
+def start_periodic_cleaner():
+    """Periodically purges temporary voice files older than 10 seconds."""
+    import time
+    while True:
+        try:
+            if os.path.exists(TEMP_DIR):
+                now = time.time()
+                for f in os.listdir(TEMP_DIR):
+                    filepath = os.path.join(TEMP_DIR, f)
+                    if os.path.isfile(filepath):
+                        mtime = os.path.getmtime(filepath)
+                        # Delete file only if older than 10 seconds to avoid breaking current playbacks
+                        if now - mtime > 10:
+                            try:
+                                os.remove(filepath)
+                            except Exception:
+                                pass
+        except Exception:
+            pass
+        time.sleep(30) # Run cleanup sweep every 30 seconds
+
+# Start the background cleaner thread
+threading.Thread(target=start_periodic_cleaner, daemon=True).start()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Utility Functions
 # ─────────────────────────────────────────────────────────────────────────────
@@ -367,10 +391,6 @@ class VoiceStreamer:
                 filepath = self.queue.get(timeout=1.0)
                 # Play synchronously (blocking this audio thread so they play in order!)
                 play_audio_windows(filepath, wait=True)
-                
-                # Clean up file ONLY if it is a temporary stream file (protects offline warning cache)
-                if filepath and "temp_stream_" in filepath:
-                    safe_delete_file(filepath)
                 self.queue.task_done()
             except queue.Empty:
                 continue

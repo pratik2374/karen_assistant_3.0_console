@@ -231,28 +231,38 @@ def process_recurring_reminders():
                 recurring_reminders_col.update_one({"_id": r["_id"]}, {"$set": {"last_fired": now_utc.isoformat()}})
                 
                 if r_type == "DIARY":
-                    # Trigger diary prompt in CLI
-                    diary_prompts_col.insert_one({
-                        "timestamp": now_utc.isoformat(),
-                        "processed": False
-                    })
-                    print(f"[Daemon] Dispatched diary check-in prompt.")
+                    import subprocess
+                    import sys
+                    base_dir = os.path.dirname(os.path.abspath(__file__))
+                    script_path = os.path.join(base_dir, "gui_alerts.py")
+                    pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
+                    subprocess.Popen([pythonw_exe, script_path, "--type", "diary"], cwd=base_dir)
+                    print(f"[Daemon] Launched task diary GUI.")
                 else:
                     # Snarky water/stretch reminder alert
-                    prompt = f"Write a quick, snarky, punchy reminder warning the user to do their recurring activity: '{title}'."
-                    message = ai.generate_karen_response(prompt)
-                    
-                    # Show toast
-                    from notifier import show_basic_toast
-                    show_basic_toast(f"Reminder: {title.title()}", message)
-                    
-                    # Log alert
-                    live_alerts_col.insert_one({
-                        "message": message,
-                        "timestamp": now_utc.isoformat(),
-                        "processed": False
-                    })
-                    print(f"[Daemon] Fired recurring reminder alert for '{title}'.")
+                    if "water" in title.lower() or "drink" in title.lower() or "hydrat" in title.lower():
+                        import subprocess
+                        import sys
+                        base_dir = os.path.dirname(os.path.abspath(__file__))
+                        script_path = os.path.join(base_dir, "gui_alerts.py")
+                        pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
+                        subprocess.Popen([pythonw_exe, script_path, "--type", "water"], cwd=base_dir)
+                        print(f"[Daemon] Launched water reminder GUI overlay.")
+                    else:
+                        prompt = f"Write a quick, snarky, punchy reminder warning the user to do their recurring activity: '{title}'."
+                        message = ai.generate_karen_response(prompt)
+                        
+                        # Show toast
+                        from notifier import show_basic_toast
+                        show_basic_toast(f"Reminder: {title.title()}", message)
+                        
+                        # Log alert
+                        live_alerts_col.insert_one({
+                            "message": message,
+                            "timestamp": now_utc.isoformat(),
+                            "processed": False
+                        })
+                        print(f"[Daemon] Fired recurring reminder alert for '{title}'.")
         except Exception as e:
             print(f"[Daemon Error] Error processing recurring reminder: {e}")
 
@@ -262,6 +272,13 @@ def main_loop():
     print("          Escalating 3-Stage Procrastination Sagas          ")
     print("=" * 60)
     
+    # Reset all recurring reminders and task diaries to inactive on startup
+    try:
+        recurring_reminders_col.update_many({}, {"$set": {"active": False}})
+        print("[Daemon] Reset all recurring reminders and task diaries to inactive on startup.")
+    except Exception as e:
+        print(f"[Daemon Error] Failed to reset reminders on startup: {e}")
+        
     # Run initial sync on start
     print("[Daemon] Syncing events on startup...")
     sync_calendar_events()

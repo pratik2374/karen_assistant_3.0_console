@@ -291,6 +291,13 @@ def run_cli():
     # Start lazy loading ChatTTS
     voice_service.load_chattts_lazy()
     
+    # Clear stale pending alerts and diary prompts from previous sessions
+    try:
+        live_alerts_col.update_many({"processed": False}, {"$set": {"processed": True}})
+        diary_prompts_col.update_many({"processed": False}, {"$set": {"processed": True}})
+    except Exception:
+        pass
+        
     # Stream the startup greeting quote (visual + audio streaming)
     stream_startup_greeting()
     

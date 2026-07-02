@@ -3,8 +3,10 @@ from pymongo import MongoClient
 
 def load_env():
     """Manually parse .env file to load configuration settings into os.environ."""
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    env_path = os.path.join(base_dir, ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if "=" in line and not line.startswith("#"):

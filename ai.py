@@ -586,7 +586,6 @@ def get_karen_orchestrator():
     unreasoned_missed = []
     try:
         from db import missed_reasons_col
-        from datetime import datetime, timezone
         now_str = datetime.now(timezone.utc).isoformat()
         query = {
             "should_ask": True,

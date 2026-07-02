@@ -81,24 +81,184 @@ def print_tasks():
     print("")
 
 def listen_for_live_alerts():
-    """Background thread polling live_alerts collection from MongoDB."""
+    """Disabled, alerts are now handled synchronously by the non-blocking input loop."""
+    pass
+
+def play_water_splash_animation():
+    """Plays a beautiful ASCII art animation of a water drop splashing in the terminal."""
+    import sys
+    import time
+    import winsound
+    
+    # 5-frame falling drop and splash splash splash
+    frames = [
+        "\n\n\n\n      .\n\n\n\n",
+        "\n\n\n\n      |\n\n\n\n",
+        "\n\n\n\n      v\n\n\n\n",
+        "\n\n\n\n    \\ | /\n     - -\n\n\n",
+        "\n\n\n   .  .  .\n    o   o\n     - -\n\n",
+        "\n\n\n\n\n\n\n\n"
+    ]
+    
+    # Triple pleasant high beep tones
+    try:
+        winsound.Beep(523, 80)  # C5
+        winsound.Beep(659, 80)  # E5
+        winsound.Beep(784, 120) # G5
+    except Exception:
+        pass
+        
+    print(f"\n{Fore.BLUE}{Style.BRIGHT}   💧 DRINK WATER REMINDER 💧   {Fore.RESET}")
+    for frame in frames:
+        sys.stdout.write(frame)
+        sys.stdout.flush()
+        time.sleep(0.12)
+        sys.stdout.write("\033[9A")
+        sys.stdout.flush()
+        
+    # Clear visual workspace area
+    for _ in range(9):
+        sys.stdout.write(" " * 45 + "\n")
+    sys.stdout.write("\033[9A")
+    sys.stdout.flush()
+
+def run_diary_checkin_flow():
+    """Runs the beautiful split-screen task diary entry flow with double chimes."""
+    import winsound
+    import csv
+    from datetime import datetime
+    
+    # Double chime beeps
+    try:
+        winsound.Beep(880, 150)
+        winsound.Beep(1100, 200)
+    except Exception:
+        pass
+        
+    # Clear visual block
+    print(f"\n{Fore.YELLOW}{Style.BRIGHT}╔══════════════════════════════════════╦══════════════════════════════════════╗")
+    print(f"║          WHAT I SHOULD BE DOING      ║            WHAT I AM DOING           ║")
+    print(f"╠══════════════════════════════════════╬══════════════════════════════════════╣")
+    print(f"║                                      ║                                      ║")
+    
+    # Vocal prompt
+    voice_service.speak_conversation("Task diary check-in. What should you be doing right now?")
+    
+    # Prompt left side
+    should_be_doing = input(f"║ Should be: {Fore.GREEN}").strip()
+    # Move visual cursor structure
+    print(f"{Fore.YELLOW}║                                      ║                                      ║")
+    
+    # Vocal prompt 2
+    voice_service.speak_conversation("And what are you actually doing?")
+    
+    # Prompt right side
+    actually_doing = input(f"║ Actually:                          {Fore.GREEN}║ ").strip()
+    print(f"{Fore.YELLOW}╚══════════════════════════════════════╩══════════════════════════════════════╝{Fore.RESET}")
+    
+    # Append to CSV
+    csv_file = "task_diary.csv"
+    file_exists = os.path.exists(csv_file)
+    try:
+        with open(csv_file, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["Timestamp", "Should Be Doing", "Actually Doing"])
+            writer.writerow([
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                should_be_doing,
+                actually_doing
+            ])
+        print(f"{Fore.BLUE}[Task Diary] Entry logged successfully to '{csv_file}'. Go back to what you should be doing.{Fore.RESET}\n")
+        voice_service.speak_conversation("Diary logged. Back to work.")
+    except Exception as e:
+        print(f"{Fore.RED}[Task Diary Error] Failed to write entry to CSV: {e}{Fore.RESET}\n")
+
+def non_blocking_input(prompt: str) -> str:
+    """Reads input from console while polling background alerts and task diaries on Windows."""
+    import msvcrt
+    import sys
+    
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    
+    input_chars = []
     while True:
+        # 1. Check for keyboard input
+        if msvcrt.kbhit():
+            ch = msvcrt.getch()
+            # Handle Enter key
+            if ch in (b'\r', b'\n'):
+                sys.stdout.write('\n')
+                sys.stdout.flush()
+                break
+            # Handle Backspace
+            elif ch == b'\x08':
+                if input_chars:
+                    input_chars.pop()
+                    sys.stdout.write('\b \b')
+                    sys.stdout.flush()
+            # Handle Escape or Ctrl+C
+            elif ch == b'\x03':  # Ctrl+C
+                raise KeyboardInterrupt
+            else:
+                try:
+                    char_str = ch.decode('utf-8')
+                    input_chars.append(char_str)
+                    sys.stdout.write(char_str)
+                    sys.stdout.flush()
+                except UnicodeDecodeError:
+                    pass
+                    
+        # 2. Check for diary prompt (every 50ms)
+        try:
+            pending_diary = diary_prompts_col.find_one_and_update(
+                {"processed": False},
+                {"$set": {"processed": True}}
+            )
+            if pending_diary:
+                # Clear current line before diary forms
+                current_input = "".join(input_chars)
+                sys.stdout.write('\r' + ' ' * (len(prompt) + len(current_input)) + '\r')
+                sys.stdout.flush()
+                
+                # Run the diary check-in form split screen
+                run_diary_checkin_flow()
+                
+                # Redraw prompt and current typing input
+                sys.stdout.write(prompt + current_input)
+                sys.stdout.flush()
+        except Exception:
+            pass
+            
+        # 3. Check live alerts
         try:
             alert = live_alerts_col.find_one_and_update(
                 {"processed": False},
                 {"$set": {"processed": True}}
             )
             if alert:
-                # Speak the reminder/reaction alert vocally!
-                voice_service.speak_conversation(alert['message'])
+                current_input = "".join(input_chars)
+                sys.stdout.write('\r' + ' ' * (len(prompt) + len(current_input)) + '\r')
+                sys.stdout.flush()
                 
-                # We output with a carriage return \r to clear the current prompt line cleanly
-                print(f"\r\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}{alert['message']}\n")
-                # Reprint the prompt so the user can continue typing seamlessly
-                print(f"{Fore.CYAN}karen> {Fore.RESET}", end="", flush=True)
+                msg = alert['message']
+                if "water" in msg.lower() or "drink" in msg.lower() or "hydrat" in msg.lower():
+                    # Play water droplet splash animation
+                    play_water_splash_animation()
+                    
+                # Play vocal speech alert
+                voice_service.speak_conversation(msg)
+                print(f"\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}{msg}\n")
+                
+                sys.stdout.write(prompt + current_input)
+                sys.stdout.flush()
         except Exception:
             pass
-        time.sleep(2)
+            
+        time.sleep(0.05)
+        
+    return "".join(input_chars)
 
 def stream_startup_greeting():
     """Selects a random snarky greeting and streams it token-by-token (text + audio) on startup."""
@@ -162,43 +322,6 @@ def run_cli():
     conversation_history = []
     
     while True:
-        # Check for pending task diary check-ins before displaying normal prompt
-        try:
-            pending_diary = diary_prompts_col.find_one_and_update(
-                {"processed": False},
-                {"$set": {"processed": True}}
-            )
-            if pending_diary:
-                print(f"\n{Fore.YELLOW}{Style.BRIGHT}[Task Diary Check-in]{Fore.RESET}")
-                
-                # Snarky vocal voice prompts
-                voice_service.speak_conversation("Task diary check-in. What should you be doing right now?")
-                should_be_doing = input(f"{Fore.GREEN}What should you be doing right now? {Fore.RESET}").strip()
-                
-                voice_service.speak_conversation("And what are you actually doing?")
-                actually_doing = input(f"{Fore.GREEN}What are you actually doing? {Fore.RESET}").strip()
-                
-                # Append check-in to CSV
-                csv_file = "task_diary.csv"
-                file_exists = os.path.exists(csv_file)
-                try:
-                    with open(csv_file, "a", newline="", encoding="utf-8") as f:
-                        writer = csv.writer(f)
-                        if not file_exists:
-                            writer.writerow(["Timestamp", "Should Be Doing", "Actually Doing"])
-                        writer.writerow([
-                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            should_be_doing,
-                            actually_doing
-                        ])
-                    confirm_msg = "Diary entry recorded. Now go back to what you should be doing."
-                    print(f"{Fore.BLUE}[Task Diary] Entry recorded in '{csv_file}'. Go back to what you should be doing.{Fore.RESET}\n")
-                    voice_service.speak_conversation(confirm_msg)
-                except Exception as e:
-                    print(f"{Fore.RED}[Task Diary Error] Failed to write entry to CSV: {e}{Fore.RESET}\n")
-        except Exception:
-            pass
-
         try:
             if voice_input_mode:
                 print(f"{Fore.CYAN}karen (listening...)> {Fore.RESET}", end="", flush=True)
@@ -207,7 +330,7 @@ def run_cli():
                 print(f"{Fore.WHITE}{query}")
             else:
                 # Prompt cyan format
-                query = input(f"{Fore.CYAN}karen> {Fore.RESET}").strip()
+                query = non_blocking_input(f"{Fore.CYAN}karen> {Fore.RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print(f"\n{Fore.YELLOW}Session closed. Bye!")
             break

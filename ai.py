@@ -188,12 +188,14 @@ def start_recurring_reminder(title: str, interval_minutes: int) -> str:
     """
     from db import recurring_reminders_col
     
+    # Back-date last_fired so it triggers immediately
+    start_offset = datetime.now(timezone.utc) - timedelta(minutes=interval_minutes)
     recurring_reminders_col.update_one(
         {"title": title.lower().strip()},
         {"$set": {
             "title": title.lower().strip(),
             "interval_minutes": interval_minutes,
-            "last_fired": datetime.now(timezone.utc).isoformat(),
+            "last_fired": start_offset.isoformat(),
             "active": True,
             "type": "RECURRING_REMINDER"
         }},
@@ -222,12 +224,14 @@ def start_task_diary(interval_minutes: int = 60) -> str:
     """Activates the hourly task diary system, prompting the user for check-ins."""
     from db import recurring_reminders_col
     
+    # Back-date last_fired so it triggers immediately
+    start_offset = datetime.now(timezone.utc) - timedelta(minutes=interval_minutes)
     recurring_reminders_col.update_one(
         {"title": "task diary"},
         {"$set": {
             "title": "task diary",
             "interval_minutes": interval_minutes,
-            "last_fired": datetime.now(timezone.utc).isoformat(),
+            "last_fired": start_offset.isoformat(),
             "active": True,
             "type": "DIARY"
         }},

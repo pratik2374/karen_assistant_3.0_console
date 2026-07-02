@@ -161,9 +161,18 @@ def play_water_audio_and_animation():
                 # Stop high-frequency animation loop, switch to static speech poll loop
                 def poll_speech():
                     if speech_finished:
-                        root.destroy()
+                        fade_out()
                     else:
                         root.after(100, poll_speech)
+                        
+                def fade_out(alpha=1.0):
+                    if alpha > 0.0:
+                        alpha -= 0.05
+                        root.attributes("-alpha", max(0.0, alpha))
+                        root.after(15, lambda: fade_out(alpha))
+                    else:
+                        root.destroy()
+                        
                 poll_speech()
                 return
             

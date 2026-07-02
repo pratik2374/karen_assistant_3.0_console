@@ -2,17 +2,21 @@
   "dsa": {
     "description": "DSA practice, coding, leetcode, job interviews, maintain coding things, write coding progress",
     "links": [
-      "https://leetcode.com",
-      "https://www.geeksforgeeks.org",
-      "https://github.com"
+      "https://docs.google.com/spreadsheets/d/1m2Lb4B2LlUdBiUBD3TI4TPLJiPAnEyqaSECl7RGs5RI/edit?gid=0#gid=0",
+      "https://docs.google.com/spreadsheets/d/1T5-nGsJ9WNwna44e9WWRD0jlZIT5KxVOGvylcvvVrY8/htmlview?usp=sharing&pru=AAABn0Kzsu0*m7eArt_4HS0S7zR7L6N7gQ",
+      "https://www.youtube.com/playlist?list=PLbJhGqY-mq47k_WLUtzVjmarUm1EuXPj2",
+      "https://dsa-memo.vercel.app/",
+      "https://leetcode.com/u/pratik2374/"
     ]
   },
   "dev": {
-    "description": "Development work, building apps, coding projects, git repositories, localhost servers",
+    "description": "internship work, work, job, solar project, work progress, work related things",
     "links": [
-      "https://github.com",
-      "https://stackoverflow.com",
-      "http://localhost:3000"
+      "https://docs.google.com/spreadsheets/d/1ovwdVX8VVZLs4k1hxC9meJEGarRxt4hEvf85DbE8LOs/edit?usp=sharing",
+      "https://claude.ai/chat/5532164a-bced-4bb9-8d25-a78dc4c87729",
+      "https://github.com/buildfastwithai/db-chat/tree/update/version3",
+      "https://colab.research.google.com/drive/1dT78Zmx3dP3TBjCJcte5QWahsZgOGldE#scrollTo=x8yvz6u2ZO4o",
+      "https://docs.google.com/spreadsheets/d/1pfZTKRIQf7EoW4E4AGX8qu8WYHWYD1flpqeZrhmFKW8/edit?gid=660204438#gid=660204438"
     ]
   }
 }

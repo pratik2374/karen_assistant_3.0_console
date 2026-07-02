@@ -116,49 +116,114 @@ def play_water_audio_and_animation():
                 
         elif state["stage"] == 1:
             # Stage 1: Splashing ripples & scattering droplets
+            import math
             state["splash_r"] += 4
             r = state["splash_r"]
+            
+            # Ripple ring fades out as it expands
+            ripple_alpha = max(0, 1.0 - r / 90.0)
+            ripple_hex = "#{:02x}{:02x}{:02x}".format(
+                int(0x00 * ripple_alpha), int(0xe5 * ripple_alpha), int(0xff * ripple_alpha)
+            )
             canvas.create_oval(
                 width // 2 - r, 250 - r // 3,
                 width // 2 + r, 250 + r // 3,
-                outline="#00e5ff", width=2, tags="splash"
+                outline=ripple_hex, width=2, tags="splash"
             )
             
-            # Generate droplets on first splash frame
+            # Generate droplets on first splash frame — more particles, wider spread
             if not state["particles"]:
-                for i in range(8):
-                    import math
-                    angle = i * (math.pi / 4)
-                    speed = random.uniform(2, 5)
+                for i in range(14):
+                    angle = random.uniform(-math.pi, math.pi)
+                    speed = random.uniform(3, 8)
                     state["particles"].append({
-                        "x": width // 2,
-                        "y": 250,
+                        "x": float(width // 2),
+                        "y": 250.0,
                         "vx": math.cos(angle) * speed,
-                        "vy": math.sin(angle) * speed - random.uniform(1, 4)
+                        "vy": -random.uniform(2, 7),
+                        "size": random.uniform(3.0, 5.0),
+                        "life": 1.0,            # 1.0 = fully visible, fades to 0
+                        "decay": random.uniform(0.015, 0.03)
                     })
                     
-            # Draw splashing particles
+            # Draw splashing particles — they shrink and fade while still moving
+            alive = []
             for p in state["particles"]:
                 p["x"] += p["vx"]
                 p["y"] += p["vy"]
-                p["vy"] += 0.3  # Gravity
-                canvas.create_oval(
-                    p["x"] - 3, p["y"] - 3,
-                    p["x"] + 3, p["y"] + 3,
-                    fill=accent_color, outline="#00e5ff", tags="splash"
-                )
+                p["vy"] += 0.2    # Gentle gravity
+                p["vx"] *= 0.98   # Slight drag
+                p["life"] -= p["decay"]
+                p["size"] = max(0.5, p["size"] - 0.04)
                 
-            if state["splash_r"] >= 65:
+                if p["life"] > 0.02:
+                    alive.append(p)
+                    a = max(0, min(1, p["life"]))
+                    # Interpolate color from accent cyan toward black as life fades
+                    cr = int(0x00 * a)
+                    cg = int(0xe5 * a)
+                    cb = int(0xff * a)
+                    col = "#{:02x}{:02x}{:02x}".format(cr, cg, cb)
+                    s = p["size"]
+                    canvas.create_oval(
+                        p["x"] - s, p["y"] - s,
+                        p["x"] + s, p["y"] + s,
+                        fill=col, outline="", tags="splash"
+                    )
+            state["particles"] = alive
+                
+            if state["splash_r"] >= 80:
                 state["stage"] = 2
+                state["fade_frame"] = 0
                 
-                # Draw the static calm water line once at the base (no tags so it is never deleted)
+        elif state["stage"] == 2:
+            # Stage 2: Remaining particles continue drifting and vanishing
+            import math
+            alive = []
+            for p in state["particles"]:
+                p["x"] += p["vx"]
+                p["y"] += p["vy"]
+                p["vy"] += 0.15
+                p["vx"] *= 0.97
+                p["life"] -= p["decay"]
+                p["size"] = max(0.3, p["size"] - 0.05)
+                
+                if p["life"] > 0.02:
+                    alive.append(p)
+                    a = max(0, min(1, p["life"]))
+                    cr = int(0x00 * a)
+                    cg = int(0xe5 * a)
+                    cb = int(0xff * a)
+                    col = "#{:02x}{:02x}{:02x}".format(cr, cg, cb)
+                    s = p["size"]
+                    canvas.create_oval(
+                        p["x"] - s, p["y"] - s,
+                        p["x"] + s, p["y"] + s,
+                        fill=col, outline="", tags="splash"
+                    )
+            state["particles"] = alive
+            
+            # Draw a subtle calm water line that also fades in
+            state["fade_frame"] += 1
+            line_alpha = min(1.0, state["fade_frame"] / 20.0)
+            lg = int(0xe5 * line_alpha * 0.4)
+            lb = int(0xff * line_alpha * 0.4)
+            line_col = "#{:02x}{:02x}{:02x}".format(0, lg, lb)
+            canvas.create_line(
+                width // 2 - 40, 250,
+                width // 2 + 40, 250,
+                fill=line_col, width=2, tags="splash"
+            )
+            
+            # Once all particles are gone, switch to static speech poll
+            if not alive:
+                # Draw the final calm water line permanently
                 canvas.create_line(
                     width // 2 - 40, 250,
                     width // 2 + 40, 250,
-                    fill=accent_color, width=2
+                    fill="#005966", width=2
                 )
                 
-                # Stop high-frequency animation loop, switch to static speech poll loop
                 def poll_speech():
                     if speech_finished:
                         fade_out()

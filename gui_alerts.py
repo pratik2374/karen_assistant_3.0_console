@@ -23,14 +23,34 @@ WATER_QUOTES = [
 def play_water_audio_and_animation():
     """Renders a frameless screen overlay of a water drop falling and splashing with chimes."""
     import random
+    import asyncio
+    import edge_tts
     
-    # 1. Start vocal speech in background thread and set flag when finished
-    quote = random.choice(WATER_QUOTES)
+    # Select quote index
+    idx = random.randint(0, len(WATER_QUOTES) - 1)
+    quote = WATER_QUOTES[idx]
+    
+    # Ensure utilities folder exists
+    os.makedirs("utilities", exist_ok=True)
+    cache_file = os.path.abspath(f"utilities/water_quote_{idx}.mp3")
+    
+    # Pre-cache the audio file locally if it doesn't exist
+    if not os.path.exists(cache_file):
+        try:
+            communicate = edge_tts.Communicate(quote, "en-US-AvaMultilingualNeural")
+            asyncio.run(communicate.save(cache_file))
+            print(f"[GUI Voice] Pre-cached quote {idx} locally.")
+        except Exception as e:
+            print(f"[GUI Voice Error] Failed to cache quote: {e}")
+            
     speech_finished = False
     
     def run_speech():
         nonlocal speech_finished
-        voice_service.speak_conversation(quote)
+        if os.path.exists(cache_file):
+            voice_service.play_audio_windows(cache_file, wait=True)
+        else:
+            voice_service.speak_conversation(quote)
         speech_finished = True
         
     import threading

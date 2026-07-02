@@ -12,71 +12,53 @@ import voice_service
 import db
 db.load_env()
 
-# Pre-defined snarky hydration reminders
+# Pre-defined witty and cute hydration reminders (2-5 words limit)
 WATER_QUOTES = [
-    "Drink some water. Your brain is 73% water, and right now it's performing like it's 99% empty.",
-    "Stay hydrated. Go drink a glass of water before you turn into a dried raisin.",
-    "Water time. Stop staring at the screen and go hydrate yourself. I can't work with a dehydrated human.",
-    "Drink water. Your kidneys are begging you. Do it now.",
-    "Go get a glass of water. Yes, right now. Procrastinating on hydration is a new low, even for you."
+    "Time to hydrate, cutie.",
+    "Drink water, mortal.",
+    "Stay juicy, human.",
+    "Hydrate or die-drate."
 ]
 
 def play_water_audio_and_animation():
     """Renders a frameless screen overlay of a water drop falling and splashing with chimes."""
     import random
     
-    # 1. Start vocal speech in background thread to avoid blocking Tkinter
+    # 1. Start vocal speech in background thread and set flag when finished
     quote = random.choice(WATER_QUOTES)
+    speech_finished = False
+    
+    def run_speech():
+        nonlocal speech_finished
+        voice_service.speak_conversation(quote)
+        speech_finished = True
+        
     import threading
-    threading.Thread(target=voice_service.speak_conversation, args=(quote,), daemon=True).start()
+    threading.Thread(target=run_speech, daemon=True).start()
 
     # 2. Setup Tkinter overlay
     root = tk.Tk()
     root.title("Water Splash Overlay")
     
-    # Set window topmost, frameless with beautiful cyan border
+    # Set window transparent, topmost, frameless
     root.overrideredirect(True)
     root.attributes("-topmost", True)
+    root.attributes("-transparentcolor", "#010101")
+    root.config(bg="#010101")
     
-    bg_color = "#1E1E1E"
     accent_color = "#00adb5"
     
     # Position in center of screen
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
-    width = 350
-    height = 450
+    width = 300
+    height = 400
     x = (screen_w - width) // 2
     y = (screen_h - height) // 2
     root.geometry(f"{width}x{height}+{x}+{y}")
-    root.configure(bg=bg_color)
     
-    # Border Frame
-    border_frame = tk.Frame(root, bg=bg_color, highlightbackground=accent_color, highlightthickness=3)
-    border_frame.pack(fill="both", expand=True)
-    
-    canvas = tk.Canvas(border_frame, bg=bg_color, highlightthickness=0, width=width, height=260)
-    canvas.pack(fill="x", side="top", pady=10)
-    
-    # Draw water text
-    canvas.create_text(
-        width // 2, 40,
-        text="💧 HYDRATE! 💧",
-        fill=accent_color,
-        font=("Segoe UI", 18, "bold")
-    )
-    
-    # Display the snarky quote text visually inside a wrapped label
-    quote_label = tk.Label(
-        border_frame,
-        text=quote,
-        bg=bg_color,
-        fg="#EEEEEE",
-        font=("Segoe UI", 10, "italic"),
-        wraplength=310,
-        justify="center"
-    )
-    quote_label.pack(fill="x", side="bottom", padx=20, pady=25)
+    canvas = tk.Canvas(root, bg="#010101", highlightthickness=0)
+    canvas.pack(fill="both", expand=True)
     
     # Sound chime
     try:
@@ -87,7 +69,7 @@ def play_water_audio_and_animation():
         pass
         
     # Animation states: drop_y, splash_radius, stage
-    # stage: 0 = falling, 1 = splashing, 2 = holding/fading, 3 = closed
+    # stage: 0 = falling, 1 = splashing, 2 = holding/fading
     state = {
         "drop_y": 70,
         "splash_r": 0,
@@ -100,7 +82,7 @@ def play_water_audio_and_animation():
         canvas.delete("splash")
         
         if state["stage"] == 0:
-            # Stage 0: Droplet falling (slower, smoother)
+            # Stage 0: Droplet falling
             state["drop_y"] += 6
             y1 = state["drop_y"]
             canvas.create_oval(
@@ -108,17 +90,17 @@ def play_water_audio_and_animation():
                 width // 2 + 6, y1 + 10,
                 fill=accent_color, outline="#00e5ff", width=2, tags="drop"
             )
-            # Check collision with water level (y = 190)
-            if state["drop_y"] >= 190:
+            # Check collision with water level (y = 250)
+            if state["drop_y"] >= 250:
                 state["stage"] = 1
                 
         elif state["stage"] == 1:
-            # Stage 1: Splashing ripples & scattering droplets (slower, smoother)
+            # Stage 1: Splashing ripples & scattering droplets
             state["splash_r"] += 4
             r = state["splash_r"]
             canvas.create_oval(
-                width // 2 - r, 190 - r // 3,
-                width // 2 + r, 190 + r // 3,
+                width // 2 - r, 250 - r // 3,
+                width // 2 + r, 250 + r // 3,
                 outline="#00e5ff", width=2, tags="splash"
             )
             
@@ -130,7 +112,7 @@ def play_water_audio_and_animation():
                     speed = random.uniform(2, 5)
                     state["particles"].append({
                         "x": width // 2,
-                        "y": 190,
+                        "y": 250,
                         "vx": math.cos(angle) * speed,
                         "vy": math.sin(angle) * speed - random.uniform(1, 4)
                     })
@@ -150,16 +132,16 @@ def play_water_audio_and_animation():
                 state["stage"] = 2
                 
         elif state["stage"] == 2:
-            # Stage 2: Hold open for 6 seconds to show text and speak
-            state["stage"] = 3
-            # Draw calm water pool line at base
+            # Stage 2: Hold open until speech finishes
+            # Draw static calm water line
             canvas.create_line(
-                width // 2 - 70, 190,
-                width // 2 + 70, 190,
-                fill=accent_color, width=2
+                width // 2 - 40, 250,
+                width // 2 + 40, 250,
+                fill=accent_color, width=2, tags="splash"
             )
-            root.after(6000, root.destroy)
-            return
+            if speech_finished:
+                root.destroy()
+                return
             
         root.after(16, animate) # ~60fps
         

@@ -120,6 +120,92 @@ def open_links(category: str) -> str:
     except Exception as e:
         return f"Error opening links: {e}"
 
+def open_app(app_name: str, path_or_project_name: str = None) -> str:
+    """Opens a Windows application, optionally with a file, folder, or project directory.
+    
+    Args:
+        app_name (str): The name of the application to open (e.g., 'VS Code', 'Notepad', 'Explorer', 'Calculator').
+        path_or_project_name (str, optional): The path to a file/folder or the name of a project directory (e.g. 'solar').
+    """
+    import subprocess
+    import os
+    
+    app = app_name.lower().strip()
+    
+    # Map common application names to executable/command prefixes
+    app_cmd = None
+    if any(x in app for x in ["vscode", "vs code", "visual studio code"]):
+        app_cmd = "code"
+    elif "notepad" in app:
+        app_cmd = "notepad"
+    elif "calculator" in app or app == "calc":
+        app_cmd = "calc"
+    elif "explorer" in app or "folder" in app:
+        app_cmd = "explorer"
+    elif any(x in app for x in ["chrome", "browser"]):
+        app_cmd = "start chrome"
+    else:
+        # Try running it directly as a command
+        app_cmd = app
+        
+    # Resolve project directory if specified
+    target_path = None
+    if path_or_project_name:
+        path_or_project_name = path_or_project_name.strip()
+        # Check if it is a literal absolute path
+        if os.path.exists(path_or_project_name):
+            target_path = path_or_project_name
+        else:
+            # Search for a matching directory under d:\Codes\Project
+            base_dir = "d:\\Codes\\Project"
+            if os.path.exists(base_dir):
+                try:
+                    subdirs = [os.path.join(base_dir, d) for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+                    # Look for exact or fuzzy match
+                    match = None
+                    for s in subdirs:
+                        folder_name = os.path.basename(s).lower()
+                        if path_or_project_name.lower() in folder_name:
+                            match = s
+                            break
+                    if match:
+                        target_path = match
+                except Exception:
+                    pass
+                    
+    # Execute the command
+    try:
+        if app_cmd == "code":
+            if target_path:
+                subprocess.Popen(["code", target_path], shell=True)
+                return f"Opened VS Code in folder: {target_path}"
+            else:
+                subprocess.Popen(["code"], shell=True)
+                return "Opened VS Code."
+        elif app_cmd == "notepad":
+            if target_path:
+                subprocess.Popen(["notepad", target_path], shell=True)
+                return f"Opened Notepad with file: {target_path}"
+            else:
+                subprocess.Popen(["notepad"], shell=True)
+                return "Opened Notepad."
+        elif app_cmd == "explorer":
+            if target_path:
+                subprocess.Popen(["explorer", target_path], shell=True)
+                return f"Opened File Explorer in folder: {target_path}"
+            else:
+                subprocess.Popen(["explorer"], shell=True)
+                return "Opened File Explorer."
+        else:
+            # Generic run via shell start
+            cmd = f"start {app_cmd}"
+            if target_path:
+                cmd += f' "{target_path}"'
+            subprocess.Popen(cmd, shell=True)
+            return f"Executed command: {cmd}"
+    except Exception as e:
+        return f"Failed to open app '{app_name}': {e}"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Specialist Member Agents
 # ─────────────────────────────────────────────────────────────────────────────
@@ -197,6 +283,7 @@ def get_karen_orchestrator():
         "DIRECT ANSWER OPTION: If the user query is a simple greeting (e.g. 'hi', 'how are you'), a general joke, conversational banter, or does not require calendar/reminder/memory modifications, DO NOT delegate. Answer directly yourself in your typical snarky voice.",
         "DELEGATE OPTION: If the query requires calendar reading, reminder creating/completing, or memory operations, you MUST call the appropriate delegation tool.",
         "OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session (e.g. 'lets grind DSA', 'do coding', 'dev work'), call the open_links tool with the matched category name (e.g. 'dsa' or 'dev').",
+        "OPEN APP OPTION: If the user asks to open a local Windows application (e.g. VS Code, Notepad, Calculator, Browser, File Explorer) or asks to open a specific project/folder in an app (e.g. 'open the solar project in vs code'), call the open_app tool with the application name and optionally the project/directory name.",
         f"CURRENT DATE & TIME: {now_str}",
         f"KNOWN USER FACTS:\n{facts_str}"
     ]
@@ -205,7 +292,7 @@ def get_karen_orchestrator():
         name="Karen Orchestrator",
         role="Primary coordinator. Replies directly to general conversation or delegates to specialists when needed.",
         model=get_agno_model(),
-        tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, open_links],
+        tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, open_links, open_app],
         instructions=instructions
     )
 

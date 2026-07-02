@@ -344,6 +344,7 @@ def get_karen_orchestrator():
         "OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session (e.g. 'lets grind DSA', 'do coding', 'dev work'), call the open_links tool with the matched category name (e.g. 'dsa' or 'dev').",
         "OPEN APP OPTION: If the user asks to open a local Windows application (e.g. VS Code, Notepad, Calculator, Browser, File Explorer) or asks to open a specific project/folder in an app (e.g. 'open the solar project in vs code'), call the open_app tool with the application name and optionally the project/directory name.",
         "RECENT VS CODE PROJECTS OPTION: If the user asks about their recent projects, what they were working on recently, or asks to count/list their recent VS Code workspaces, call the get_recent_projects tool to list them.",
+        "MULTI-STEP APP OPENING: If the user asks to open your 'recent projects' (e.g. 'open recent two projects in VS Code'), you must first call get_recent_projects to retrieve their paths, and then call open_app for each resolved path in order to open them.",
         f"CURRENT DATE & TIME: {now_str}",
         f"KNOWN USER FACTS:\n{facts_str}"
     ]

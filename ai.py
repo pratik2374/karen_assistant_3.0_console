@@ -129,6 +129,8 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
     """
     import subprocess
     import os
+    import json
+    import urllib.parse
     
     app = app_name.lower().strip()
     
@@ -145,7 +147,6 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
     elif any(x in app for x in ["chrome", "browser"]):
         app_cmd = "start chrome"
     else:
-        # Try running it directly as a command
         app_cmd = app
         
     # Resolve project directory if specified
@@ -156,31 +157,62 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
         if os.path.exists(path_or_project_name):
             target_path = path_or_project_name
         else:
-            # Recursive scan up to depth 3 under each search base
-            search_bases = ["d:\\Codes\\Project", "d:\\Work"]
-            match = None
-            for base in search_bases:
-                if not os.path.exists(base):
-                    continue
-                # Traverse base
-                for root, dirs, files in os.walk(base):
-                    # Restrict depth to 3
-                    depth = root[len(base):].count(os.sep)
-                    if depth > 3:
-                        dirs.clear()
+            matches = []
+            
+            # Step 1: Search in VS Code recently opened workspaces history first!
+            appdata = os.environ.get("APPDATA")
+            storage_dir = os.path.join(appdata, "Code", "User", "workspaceStorage")
+            if os.path.exists(storage_dir):
+                try:
+                    for d in os.listdir(storage_dir):
+                        path = os.path.join(storage_dir, d, "workspace.json")
+                        if os.path.exists(path):
+                            try:
+                                with open(path, "r", encoding="utf-8") as f:
+                                    data = json.load(f)
+                                    uri = data.get("folder")
+                                    if uri and uri.startswith("file:///"):
+                                        folder_path = urllib.parse.unquote(uri[8:])
+                                        folder_path = folder_path.replace("/", "\\")
+                                        if folder_path.startswith("file:///"):
+                                            folder_path = folder_path[8:]
+                                            
+                                        # Check for substring match in folder name
+                                        folder_name = os.path.basename(folder_path).lower()
+                                        if path_or_project_name.lower() in folder_name:
+                                            if folder_path not in matches:
+                                                matches.append(folder_path)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            
+            # Step 2: Fallback to directory scan if no match found in history
+            if not matches:
+                search_bases = ["d:\\Codes\\Project", "d:\\Work"]
+                for base in search_bases:
+                    if not os.path.exists(base):
                         continue
-                    # Check if project name is inside folder name
-                    for d in dirs:
-                        if path_or_project_name.lower() in d.lower():
-                            match = os.path.join(root, d)
-                            break
-                    if match:
-                        break
-                if match:
-                    break
-            if match:
-                target_path = match
-                    
+                    for root, dirs, files in os.walk(base):
+                        depth = root[len(base):].count(os.sep)
+                        if depth > 3:
+                            dirs.clear()
+                            continue
+                        for d in dirs:
+                            if path_or_project_name.lower() in d.lower():
+                                full_path = os.path.join(root, d)
+                                if full_path not in matches:
+                                    matches.append(full_path)
+                                    
+            # Step 3: Handle matches count
+            if len(matches) == 1:
+                target_path = matches[0]
+            elif len(matches) > 1:
+                # Ambiguous matches: ask the user to clarify
+                return f"AMBIGUOUS MATCHES: I found multiple folders matching '{path_or_project_name}': {', '.join(matches)}. Please ask the user to clarify which one they want to open."
+            else:
+                return f"NOT FOUND: I couldn't find any folder matching '{path_or_project_name}' in your recent VS Code history or project directories. Ask the user for the folder location or path."
+                
     # Execute the command
     try:
         if app_cmd == "code":
@@ -205,7 +237,6 @@ def open_app(app_name: str, path_or_project_name: str = None) -> str:
                 subprocess.Popen(["explorer"], shell=True)
                 return "Opened File Explorer."
         else:
-            # Generic run via shell start
             cmd = f"start {app_cmd}"
             if target_path:
                 cmd += f' "{target_path}"'

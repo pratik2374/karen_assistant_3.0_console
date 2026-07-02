@@ -52,13 +52,14 @@ def process_active_sagas():
                 # Too old! Mark task as MISSED and stop saga
                 tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
                 saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
-                # Insert default "User not specified" reason
+                # Insert default "User not specified" reason, but should_ask=False
                 missed_reasons_col.update_one(
                     {"task_id": task_id},
                     {"$setOnInsert": {
                         "task_id": task_id,
                         "reason": "User not specified",
-                        "timestamp": now_utc.isoformat()
+                        "timestamp": now_utc.isoformat(),
+                        "should_ask": False
                     }},
                     upsert=True
                 )
@@ -159,13 +160,16 @@ def process_active_sagas():
             # Mark task status as MISSED and stop saga
             tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
             saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
-            # Insert default "User not specified" reason
+            # Insert default "User not specified" reason with should_ask=True, ask_after = now + 10 mins
+            ask_after_time = now_utc + timedelta(minutes=10)
             missed_reasons_col.update_one(
                 {"task_id": task_id},
-                {"$setOnInsert": {
+                {"$set": {
                     "task_id": task_id,
                     "reason": "User not specified",
-                    "timestamp": now_utc.isoformat()
+                    "timestamp": now_utc.isoformat(),
+                    "ask_after": ask_after_time.isoformat(),
+                    "should_ask": True
                 }},
                 upsert=True
             )
@@ -190,13 +194,14 @@ def check_expired_tasks():
         # Mark as MISSED
         tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
         saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
-        # Insert default "User not specified" reason
+        # Insert default "User not specified" reason, but should_ask=False
         missed_reasons_col.update_one(
             {"task_id": task_id},
             {"$setOnInsert": {
                 "task_id": task_id,
                 "reason": "User not specified",
-                "timestamp": now_utc.isoformat()
+                "timestamp": now_utc.isoformat(),
+                "should_ask": False
             }},
             upsert=True
         )

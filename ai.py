@@ -509,14 +509,20 @@ def get_karen_orchestrator():
     recent_paths = get_recent_projects_list(25)
     recent_str = "\n".join(f"- {p}" for p in recent_paths) if recent_paths else "No recent projects found."
 
-    # Load unreasoned missed tasks
+    # Load unreasoned missed tasks (only failed 3-stage escalations, 10 minutes past miss time)
     unreasoned_missed = []
     try:
         from db import missed_reasons_col
-        missed_tasks = list(tasks_col.find({"status": "MISSED"}))
-        for t in missed_tasks:
-            r_doc = missed_reasons_col.find_one({"task_id": t["id"]})
-            if not r_doc or r_doc.get("reason") == "User not specified":
+        from datetime import datetime, timezone
+        now_str = datetime.now(timezone.utc).isoformat()
+        query = {
+            "should_ask": True,
+            "reason": "User not specified",
+            "ask_after": {"$lte": now_str}
+        }
+        for r_doc in missed_reasons_col.find(query):
+            t = tasks_col.find_one({"id": r_doc["task_id"]})
+            if t:
                 unreasoned_missed.append(t)
     except Exception:
         pass

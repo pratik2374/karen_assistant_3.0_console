@@ -44,6 +44,17 @@ def process_active_sagas():
         title = task["title"]
         start_time_dt = parse_iso_time(task["start_time"])
 
+        # Check if reminder is too late to fire (recovery window logic: now_utc > start_time_dt + delay_minutes)
+        delay_minutes = task.get("delay_minutes")
+        if delay_minutes is not None:
+            max_firing_time = start_time_dt + timedelta(minutes=delay_minutes)
+            if now_utc > max_firing_time:
+                # Too old! Mark task as MISSED and stop saga
+                tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
+                saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+                print(f"[Daemon] Terminated saga for reminder '{title}' (ID: {task_id}) since it is too late to fire (recovery window passed: {now_utc.isoformat()} > {max_firing_time.isoformat()})")
+                continue
+
         print(f"[Daemon] Processing Saga Stage {stage} for task: '{title}' (ID: {task_id})")
 
         if stage == 0:
@@ -140,6 +151,27 @@ def process_active_sagas():
             saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
             print(f"[Daemon] Saga for '{title}' completed. Task marked as MISSED.")
 
+def check_expired_tasks():
+    """Checks for tasks whose end_time has passed in the past, and if still PENDING or STARTED, marks them as MISSED."""
+    now_utc = datetime.now(timezone.utc)
+    now_str = now_utc.isoformat()
+    
+    # Query pending or started tasks whose end_time has passed
+    expired_tasks = list(tasks_col.find({
+        "status": {"$in": ["PENDING", "STARTED"]},
+        "end_time": {"$lt": now_str}
+    }))
+    
+    for task in expired_tasks:
+        task_id = task["id"]
+        title = task["title"]
+        old_status = task["status"]
+        
+        # Mark as MISSED
+        tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
+        saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+        print(f"[Daemon] Task '{title}' (ID: {task_id}) has expired (end_time passed). Marked as MISSED (was {old_status}).")
+
 def main_loop():
     print("=" * 60)
     print("           KAREN DAEMON  ·  Background Scheduler            ")
@@ -160,7 +192,10 @@ def main_loop():
             # 1. Process active reminder escalation sagas
             process_active_sagas()
             
-            # 2. Check if it's time to sync calendar events (every 5 minutes)
+            # 2. Check and mark expired tasks as MISSED
+            check_expired_tasks()
+            
+            # 3. Check if it's time to sync calendar events (every 5 minutes)
             if time.time() - last_sync_time >= sync_interval_seconds:
                 print("[Daemon] Running periodic Google Calendar sync...")
                 sync_calendar_events()

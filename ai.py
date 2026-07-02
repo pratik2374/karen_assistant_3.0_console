@@ -58,7 +58,10 @@ def create_reminder(title: str, delay_minutes: int) -> str:
         "title": title,
         "start_time": start_time.isoformat(),
         "end_time": end_time.isoformat(),
-        "status": "PENDING"
+        "status": "PENDING",
+        "delay_minutes": delay_minutes,
+        "type": "REMINDER",
+        "created_at": now_utc.isoformat()
     })
     
     saga_states_col.insert_one({
@@ -77,6 +80,104 @@ def complete_task(task_id: str) -> str:
     res2 = saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
     print(f"[Reminder Tool] Completed task {task_id}.")
     return f"Success: Task {task_id} completed. Saga stopped."
+
+def list_reminders() -> str:
+    """Lists all active and completed reminders created by the user (does not list calendar events)."""
+    import json
+    reminders = list(tasks_col.find({"type": "REMINDER"}))
+    if not reminders:
+        return "You have no reminders set."
+    
+    formatted = []
+    for r in reminders:
+        formatted.append({
+            "task_id": r["id"],
+            "title": r["title"],
+            "start_time": r["start_time"],
+            "status": r["status"]
+        })
+    return json.dumps(formatted, indent=2)
+
+def update_task_or_reminder(task_id: str, new_title: str = None, delay_minutes: int = None) -> str:
+    """Updates the title or rescheduled time of a reminder or calendar task.
+    
+    Args:
+        task_id (str): The ID of the task/reminder.
+        new_title (str, optional): The new title for the task.
+        delay_minutes (int, optional): The new delay in minutes from now to reschedule the task.
+    """
+    task = tasks_col.find_one({"id": task_id})
+    if not task:
+        return f"Error: Task with ID {task_id} not found."
+        
+    updates = {}
+    if new_title:
+        updates["title"] = new_title
+        
+    if delay_minutes is not None:
+        now_utc = datetime.now(timezone.utc)
+        start_time = now_utc + timedelta(minutes=delay_minutes)
+        end_time = start_time + timedelta(minutes=15)
+        updates["start_time"] = start_time.isoformat()
+        updates["end_time"] = end_time.isoformat()
+        updates["delay_minutes"] = delay_minutes
+        
+        # Also reschedule wakeup
+        saga_states_col.update_one(
+            {"task_id": task_id},
+            {"$set": {
+                "next_wakeup": start_time.isoformat(),
+                "current_stage": 1 if task.get("type") == "REMINDER" else 0,
+                "status": "ACTIVE"
+            }}
+        )
+        
+    tasks_col.update_one({"id": task_id}, {"$set": updates})
+    return f"Success: Updated task {task_id}."
+
+def delete_reminder(task_id: str) -> str:
+    """Deletes a reminder and stops its saga. Cannot delete calendar events.
+    
+    Args:
+        task_id (str): The ID of the reminder to delete.
+    """
+    task = tasks_col.find_one({"id": task_id})
+    if not task:
+        return f"Error: Reminder with ID {task_id} not found."
+        
+    if task.get("type") != "REMINDER":
+        return "Error: Cannot delete Google Calendar events. You can only delete reminders."
+        
+    tasks_col.delete_one({"id": task_id})
+    saga_states_col.delete_one({"task_id": task_id})
+    return f"Success: Deleted reminder '{task['title']}' (ID: {task_id})."
+
+def clear_all_reminders() -> str:
+    """Deletes all reminders from the database and stops all active reminder sagas. Calendar events are preserved."""
+    res1 = tasks_col.delete_many({"type": "REMINDER"})
+    active_task_ids = [t["id"] for t in tasks_col.find({}, {"id": 1})]
+    res2 = saga_states_col.delete_many({"task_id": {"$notin": active_task_ids}})
+    return f"Success: Cleared all reminders from database. Deleted {res1.deleted_count} reminders and cleaned up sagas."
+
+def record_missed_reason(task_id: str, reason: str) -> str:
+    """Stores the reason why the user missed a specific task. Use this when the user explains why they missed a task.
+    
+    Args:
+        task_id (str): The ID of the missed task.
+        reason (str): The reason provided by the user.
+    """
+    from db import missed_reasons_col
+    missed_reasons_col.update_one(
+        {"task_id": task_id},
+        {"$set": {
+            "task_id": task_id,
+            "reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    print(f"[Missed Reasons Tool] Saved reason for task {task_id}: {reason}")
+    return f"Success: Recorded reason for missed task {task_id}."
 
 def read_memories() -> str:
     """Retrieves saved insights, preferences, and facts about the user."""
@@ -408,6 +509,17 @@ def get_karen_orchestrator():
     recent_paths = get_recent_projects_list(25)
     recent_str = "\n".join(f"- {p}" for p in recent_paths) if recent_paths else "No recent projects found."
 
+    # Load unreasoned missed tasks
+    unreasoned_missed = []
+    try:
+        from db import missed_reasons_col
+        missed_tasks = list(tasks_col.find({"status": "MISSED"}))
+        for t in missed_tasks:
+            if not missed_reasons_col.find_one({"task_id": t["id"]}):
+                unreasoned_missed.append(t)
+    except Exception:
+        pass
+
     instructions = [
         "You are Karen, an aggressively helpful, snarky, and opinionated AI assistant.",
         "You are the main coordinator. You have three delegate tools: delegate_to_calendar_agent, delegate_to_reminder_agent, and delegate_to_memory_agent.",
@@ -417,16 +529,29 @@ def get_karen_orchestrator():
         "OPEN APP OPTION: If the user asks to open a local Windows application (e.g. VS Code, Notepad, Calculator, Browser, File Explorer) or asks to open a specific project/folder in an app (e.g. 'open the solar project in vs code'), call the open_app tool with the application name and optionally the project/directory name. If the user refers to a project that matches a path in the RECENT VS CODE PROJECTS list below, pass that full path to open_app directly to avoid search failures.",
         "RECENT VS CODE PROJECTS OPTION: If the user asks about their recent projects, what they were working on recently, or asks to count/list their recent VS Code workspaces, call the get_recent_projects tool to list them.",
         "MULTI-STEP APP OPENING: If the user asks to open your 'recent projects' (e.g. 'open recent two projects in VS Code'), you must first call get_recent_projects to retrieve their paths, and then call open_app for each resolved path in order to open them.",
+        "REMINDER MANAGEMENT: You can query, update, delete, or clear reminders using list_reminders, update_task_or_reminder, delete_reminder, and clear_all_reminders. Remember that you CANNOT delete Google Calendar events (only update them).",
         f"CURRENT DATE & TIME: {now_str}",
         f"KNOWN USER FACTS:\n{facts_str}",
         f"RECENT VS CODE PROJECTS (DIRECT PATH VISIBILITY):\n{recent_str}"
     ]
 
+    if unreasoned_missed:
+        unreasoned_str = "\n".join(f"- Title: '{t['title']}', ID: '{t['id']}', Scheduled: '{t['start_time']}'" for t in unreasoned_missed[:3])
+        instructions.append(
+            f"UNREASONED MISSED TASKS: The user missed the following tasks recently, and we need to know why:\n{unreasoned_str}\n"
+            "If there are any tasks listed here, you MUST bring it up snarkily in the conversation (if you haven't asked in this session yet) and ask the user why they missed it. "
+            "When they give you a reason, call the record_missed_reason tool to save it."
+        )
+
     return Agent(
         name="Karen Orchestrator",
         role="Primary coordinator. Replies directly to general conversation or delegates to specialists when needed.",
         model=get_agno_model(),
-        tools=[delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, open_links, open_app, get_recent_projects],
+        tools=[
+            delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, 
+            open_links, open_app, get_recent_projects,
+            list_reminders, update_task_or_reminder, delete_reminder, clear_all_reminders, record_missed_reason
+        ],
         instructions=instructions
     )
 

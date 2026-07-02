@@ -85,7 +85,8 @@ def sync_calendar_events():
                     "title": title,
                     "start_time": start_time_str,
                     "end_time": end_time_str,
-                    "status": "PENDING"
+                    "status": "PENDING",
+                    "type": "CALENDAR"
                 })
                 
                 # 2. Parse start date to set timer
@@ -100,12 +101,13 @@ def sync_calendar_events():
                 if pre_alert_time < now_utc:
                     pre_alert_time = now_utc + timedelta(seconds=10)
 
-                # 3. Create active saga state
+                # 3. Create active saga state only if starting in the future
+                is_future = dt > now_utc
                 saga_states_col.insert_one({
                     "task_id": event_id,
                     "current_stage": 0,  # 0=pre-alert, 1=check-in, 2=nudge
                     "next_wakeup": pre_alert_time.isoformat(),
-                    "status": "ACTIVE"
+                    "status": "ACTIVE" if is_future else "STOPPED"
                 })
                 
                 new_tasks_count += 1

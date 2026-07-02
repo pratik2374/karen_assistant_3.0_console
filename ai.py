@@ -515,7 +515,8 @@ def get_karen_orchestrator():
         from db import missed_reasons_col
         missed_tasks = list(tasks_col.find({"status": "MISSED"}))
         for t in missed_tasks:
-            if not missed_reasons_col.find_one({"task_id": t["id"]}):
+            r_doc = missed_reasons_col.find_one({"task_id": t["id"]})
+            if not r_doc or r_doc.get("reason") == "User not specified":
                 unreasoned_missed.append(t)
     except Exception:
         pass

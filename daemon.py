@@ -1,7 +1,7 @@
 import time
 import os
 from datetime import datetime, timezone, timedelta
-from db import tasks_col, saga_states_col, live_alerts_col
+from db import tasks_col, saga_states_col, live_alerts_col, missed_reasons_col
 from calendar_service import sync_calendar_events
 from notifier import show_escalation_toast
 import ai
@@ -52,6 +52,16 @@ def process_active_sagas():
                 # Too old! Mark task as MISSED and stop saga
                 tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
                 saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+                # Insert default "User not specified" reason
+                missed_reasons_col.update_one(
+                    {"task_id": task_id},
+                    {"$setOnInsert": {
+                        "task_id": task_id,
+                        "reason": "User not specified",
+                        "timestamp": now_utc.isoformat()
+                    }},
+                    upsert=True
+                )
                 print(f"[Daemon] Terminated saga for reminder '{title}' (ID: {task_id}) since it is too late to fire (recovery window passed: {now_utc.isoformat()} > {max_firing_time.isoformat()})")
                 continue
 
@@ -149,6 +159,16 @@ def process_active_sagas():
             # Mark task status as MISSED and stop saga
             tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
             saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+            # Insert default "User not specified" reason
+            missed_reasons_col.update_one(
+                {"task_id": task_id},
+                {"$setOnInsert": {
+                    "task_id": task_id,
+                    "reason": "User not specified",
+                    "timestamp": now_utc.isoformat()
+                }},
+                upsert=True
+            )
             print(f"[Daemon] Saga for '{title}' completed. Task marked as MISSED.")
 
 def check_expired_tasks():
@@ -170,6 +190,16 @@ def check_expired_tasks():
         # Mark as MISSED
         tasks_col.update_one({"id": task_id}, {"$set": {"status": "MISSED"}})
         saga_states_col.update_one({"task_id": task_id}, {"$set": {"status": "STOPPED"}})
+        # Insert default "User not specified" reason
+        missed_reasons_col.update_one(
+            {"task_id": task_id},
+            {"$setOnInsert": {
+                "task_id": task_id,
+                "reason": "User not specified",
+                "timestamp": now_utc.isoformat()
+            }},
+            upsert=True
+        )
         print(f"[Daemon] Task '{title}' (ID: {task_id}) has expired (end_time passed). Marked as MISSED (was {old_status}).")
 
 def main_loop():

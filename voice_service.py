@@ -70,10 +70,29 @@ GREETINGS_QUOTES = [
     "Welcome back, sir. Let's make the impossible feel embarrassed."
 ]
 
-# Cache directories
-UTILITIES_DIR = "utilities"
+# Cache directories relative to script folder to avoid CWD issues
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UTILITIES_DIR = os.path.join(BASE_DIR, "utilities")
+TEMP_DIR = os.path.join(BASE_DIR, "temp")
+os.makedirs(UTILITIES_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
+
 OFFLINE_WARNING_FILE = os.path.join(UTILITIES_DIR, "offline_warning.mp3")
 OFFLINE_TEXT = "Connection error. I am currently disconnected from the internet. Some features may be unavailable."
+
+def cleanup_temp_files():
+    """Removes all temporary voice files from the temp directory on startup."""
+    if os.path.exists(TEMP_DIR):
+        for f in os.listdir(TEMP_DIR):
+            filepath = os.path.join(TEMP_DIR, f)
+            if os.path.isfile(filepath):
+                try:
+                    os.remove(filepath)
+                except Exception:
+                    pass
+
+# Run startup temp voice files cleanup
+cleanup_temp_files()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Utility Functions
@@ -215,7 +234,7 @@ def speak_conversation(text: str):
             try:
                 import soundfile as sf
                 wavs = chat_model.infer([text])
-                temp_file = f"temp_karen_voice_{random.randint(1000, 9999)}.wav"
+                temp_file = os.path.join(TEMP_DIR, f"temp_karen_voice_{random.randint(1000, 9999)}.wav")
                 sf.write(temp_file, wavs[0][0], 24000)
                 play_audio_windows(temp_file, wait=True)
                 safe_delete_file(temp_file)
@@ -229,7 +248,7 @@ def speak_conversation(text: str):
         try:
             import edge_tts
             import asyncio
-            temp_file = f"temp_karen_voice_{random.randint(1000, 9999)}.mp3"
+            temp_file = os.path.join(TEMP_DIR, f"temp_karen_voice_{random.randint(1000, 9999)}.mp3")
             
             # Helper to run async save inside thread loop
             async def save_voice():
@@ -304,7 +323,7 @@ class VoiceStreamer:
                 if chat_model is not None:
                     import soundfile as sf
                     wavs = chat_model.infer([sentence])
-                    filename = f"temp_stream_{idx}_{random.randint(10,99)}.wav"
+                    filename = os.path.join(TEMP_DIR, f"temp_stream_{idx}_{random.randint(10,99)}.wav")
                     sf.write(filename, wavs[0][0], 24000)
                 else:
                     # Check internet before calling Edge-TTS
@@ -316,7 +335,7 @@ class VoiceStreamer:
                         # Fallback to Edge-TTS
                         import edge_tts
                         import asyncio
-                        filename = f"temp_stream_{idx}_{random.randint(10,99)}.mp3"
+                        filename = os.path.join(TEMP_DIR, f"temp_stream_{idx}_{random.randint(10,99)}.mp3")
                         
                         async def save_voice():
                             communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural")

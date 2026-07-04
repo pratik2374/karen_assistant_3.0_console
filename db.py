@@ -32,11 +32,16 @@ live_alerts_col = db["live_alerts"]
 missed_reasons_col = db["missed_reasons"]
 recurring_reminders_col = db["recurring_reminders"]
 diary_prompts_col = db["diary_prompts"]
+conversation_sessions_col = db["conversation_sessions"]
+email_sync_state_col = db["email_sync_state"]
+email_priorities_col = db["email_priorities"]
 
 def init_db():
     """Initializes indexes on the collections for optimal query performance."""
     tasks_col.create_index("id", unique=True)
     saga_states_col.create_index("task_id", unique=True)
+    conversation_sessions_col.create_index("session_id", unique=True)
+    email_sync_state_col.create_index("email", unique=True)
     print(f"[DB] Initialized MongoDB database '{MONGO_DB_NAME}' with indexes.")
 
 if __name__ == "__main__":

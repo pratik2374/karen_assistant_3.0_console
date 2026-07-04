@@ -9,7 +9,9 @@ from protocol_handler import register_protocol
 import ai
 import voice_service
 import csv
-from datetime import datetime
+from datetime import datetime, timezone
+import uuid
+from memory_engine import process_orphan_sessions, auto_save_session, save_and_process_session
 
 # Initialize Colorama for cross-platform colored terminal output
 init(autoreset=True)
@@ -128,6 +130,13 @@ def stream_startup_greeting():
     print("\n")
 
 def run_cli():
+    # Initialize episodic memory session
+    session_id = str(uuid.uuid4())
+    session_started_at = datetime.now(timezone.utc).isoformat()
+    
+    # Process orphans on boot (background)
+    threading.Thread(target=process_orphan_sessions, daemon=True).start()
+
     # Start lazy loading ChatTTS
     voice_service.load_chattts_lazy()
     
@@ -256,8 +265,14 @@ def run_cli():
         if len(conversation_history) > 10:
             conversation_history = conversation_history[-10:]
 
-        # Extract memory in the background
-        ai.extract_and_save_memories(query, response)
+        # Auto-save session every 5 exchanges (10 messages)
+        # Note: Since we cap at 10, if it reaches 10 it means we've had 5 exchanges.
+        if len(conversation_history) >= 10:
+            auto_save_session(session_id, conversation_history, session_started_at)
+            
+    # Outside while loop: Handle session exit
+    print(f"\n{Fore.CYAN}[Memory] Saving session {session_id[:8]}... Karen will remember this conversation.{Fore.RESET}")
+    save_and_process_session(session_id, conversation_history, session_started_at)
 
 if __name__ == "__main__":
     import db

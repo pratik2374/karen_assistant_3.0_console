@@ -472,6 +472,20 @@ def get_recent_projects(limit: int = 10) -> str:
         
     return f"Here are your {len(result)} most recently opened projects in VS Code:\n" + "\n".join(result)
 
+def search_past_conversations(query: str) -> str:
+    """Searches Karen's memory of past conversation sessions for relevant context.
+    Use this when the user references a previous conversation, asks 'remember when...',
+    mentions something from before, or when you need historical context about past interactions.
+    Do NOT call this on every message — only when the user is clearly asking about past conversations.
+    
+    Args:
+        query (str): What to search for in past conversations.
+    """
+    from memory_engine import search_sessions
+    result = search_sessions(query)
+    print(f"[Memory Search] Query: '{query}' — returned results.")
+    return result
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Specialist Member Agents
 # ─────────────────────────────────────────────────────────────────────────────
@@ -586,11 +600,13 @@ def get_karen_orchestrator():
     unreasoned_missed = []
     try:
         from db import missed_reasons_col
-        now_str = datetime.now(timezone.utc).isoformat()
+        now_utc = datetime.now(timezone.utc)
+        now_iso = now_utc.isoformat()
+        four_hours_ago = (now_utc - timedelta(hours=4)).isoformat()
         query = {
             "should_ask": True,
             "reason": "User not specified",
-            "ask_after": {"$lte": now_str}
+            "ask_after": {"$lte": now_iso, "$gte": four_hours_ago}
         }
         for r_doc in missed_reasons_col.find(query):
             t = tasks_col.find_one({"id": r_doc["task_id"]})
@@ -599,19 +615,45 @@ def get_karen_orchestrator():
     except Exception:
         pass
 
+    from memory_engine import get_recent_session_summaries
+    session_summaries = get_recent_session_summaries(3)
+
+    try:
+        with open("links.json", "r", encoding="utf-8") as f:
+            available_link_categories = ", ".join(json.load(f).keys())
+    except Exception:
+        available_link_categories = "dsa, dev"
+
+    default_email = os.getenv("KAREN_DEFAULT_EMAIL", "Not set")
+    email_triage_instruction = (
+        "EMAIL TRIAGE: You have 3 tools for managing email (set_email_priority, search_emails, send_email). "
+        "When the user tells you to look out for specific topics (e.g., 'ABC company', 'xyz professor'), use set_email_priority to save them, then optionally call search_emails to retroactively scan the last 3 days for that topic. "
+        "When the user asks you to draft, compose, or send an email/reply, you MUST call the send_email tool immediately to actually send it. Do not just output the text. "
+        "CRITICAL: When drafting the email body, write it in your own persona as Karen. Address the user as 'Sir' (e.g., 'Hello I'm karen...') **DO not use example as it just for demonstration** and clearly state that you are Karen, his AI assistant, writing on his behalf. Never write the email pretending to be the user themselves. Keep it slightly snarky but appropriately professional for an email. "
+    )
+    if default_email != "Not set":
+        email_triage_instruction += f"If the user doesn't specify which account to send from, use the default: {default_email}."
+    else:
+        email_triage_instruction += "Ask the user which account to send from if not specified."
+
     instructions = [
         "You are Karen, an aggressively helpful, snarky, and opinionated AI assistant.",
-        "You are the main coordinator. You have three delegate tools: delegate_to_calendar_agent, delegate_to_reminder_agent, and delegate_to_memory_agent.",
-        "DIRECT ANSWER OPTION: If the user query is a simple greeting (e.g. 'hi', 'how are you'), a general joke, conversational banter, or does not require calendar/reminder/memory modifications, DO NOT delegate. Answer directly yourself in your typical snarky voice.",
-        "DELEGATE OPTION: If the query requires calendar reading, reminder creating/completing, or memory operations, you MUST call the appropriate delegation tool.",
-        "OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session (e.g. 'lets grind DSA', 'do coding', 'dev work'), call the open_links tool with the matched category name (e.g. 'dsa' or 'dev').",
+        "You are the main coordinator. You have two delegate tools: delegate_to_calendar_agent and delegate_to_reminder_agent.",
+        "DIRECT ANSWER OPTION: If the user query is a simple greeting (e.g. 'hi', 'how are you'), a general joke, conversational banter, telling you a fact about themselves, or does not require calendar/reminder modifications, DO NOT delegate. Answer directly yourself in your typical snarky voice. (Note: Any facts you learn about the user are automatically saved in the background, you do not need to call a tool to save them).",
+        "DELEGATE OPTION: If the query requires calendar reading, or reminder creating/completing, you MUST call the appropriate delegation tool.",
+        f"OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session, call the open_links tool. Available link categories in the system: [{available_link_categories}].",
         "OPEN APP OPTION: If the user asks to open a local Windows application (e.g. VS Code, Notepad, Calculator, Browser, File Explorer) or asks to open a specific project/folder in an app (e.g. 'open the solar project in vs code'), call the open_app tool with the application name and optionally the project/directory name. If the user refers to a project that matches a path in the RECENT VS CODE PROJECTS list below, pass that full path to open_app directly to avoid search failures.",
         "RECENT VS CODE PROJECTS OPTION: If the user asks about their recent projects, what they were working on recently, or asks to count/list their recent VS Code workspaces, call the get_recent_projects tool to list them.",
         "MULTI-STEP APP OPENING: If the user asks to open your 'recent projects' (e.g. 'open recent two projects in VS Code'), you must first call get_recent_projects to retrieve their paths, and then call open_app for each resolved path in order to open them.",
         "REMINDER MANAGEMENT: You can query, update, delete, or clear reminders using list_reminders, update_task_or_reminder, delete_reminder, and clear_all_reminders. Remember that you CANNOT delete Google Calendar events (only update them).",
         f"CURRENT DATE & TIME: {now_str}",
         f"KNOWN USER FACTS:\n{facts_str}",
-        f"RECENT VS CODE PROJECTS (DIRECT PATH VISIBILITY):\n{recent_str}"
+        f"RECENT VS CODE PROJECTS (DIRECT PATH VISIBILITY):\n{recent_str}",
+        f"RECENT PAST CONVERSATION SUMMARIES:\n{session_summaries}",
+        "EPISODIC MEMORY: You have a search_past_conversations tool that can search your memory of past conversation sessions. Use it ONLY when the user asks about past conversations, references something from before, or says things like 'remember when...', 'what did we talk about', 'last time I mentioned'. Do NOT call it on routine messages.",
+        "SYSTEM COMMANDER: You have a run_shell_command tool. Use it to answer questions about the system (e.g. disk space, running processes) or execute tasks. Always use PowerShell syntax.",
+        "VISION: You have a see_screen tool. Use it when the user asks you to look at their screen, read an error message, or describe what they are doing.",
+        email_triage_instruction
     ]
 
     if unreasoned_missed:
@@ -622,15 +664,53 @@ def get_karen_orchestrator():
             "When they give you a reason, call the record_missed_reason tool to save it."
         )
 
+    from system_commander import run_shell_command, see_screen
+    from email_service import search_emails, send_email
+    from db import email_priorities_col
+    
+    def manage_email_priorities(action: str, topics: str = None) -> str:
+        """Manages the priority topics for the background email LLM triage.
+        Args:
+            action (str): 'get' (to see current priorities), 'set' (to overwrite everything), or 'add' (to append to existing).
+            topics (str): The topics to set or add. Required for 'set' and 'add' actions.
+        """
+        try:
+            current = email_priorities_col.find_one({"_id": "current_priorities"})
+            current_topics = current["topics"] if current and "topics" in current else "None currently set."
+            
+            if action == "get":
+                return f"Current email priorities: {current_topics}"
+                
+            if action == "add":
+                if current_topics == "None currently set.":
+                    new_topics = topics
+                else:
+                    new_topics = f"{current_topics}, {topics}"
+            elif action == "set":
+                new_topics = topics
+            else:
+                return "Invalid action. Use 'get', 'set', or 'add'."
+                
+            email_priorities_col.update_one(
+                {"_id": "current_priorities"},
+                {"$set": {"topics": new_topics}},
+                upsert=True
+            )
+            return f"Successfully updated email priorities to: {new_topics}"
+        except Exception as e:
+            return f"Error managing priorities: {e}"
+    
     return Agent(
         name="Karen Orchestrator",
         role="Primary coordinator. Replies directly to general conversation or delegates to specialists when needed.",
         model=get_agno_model(),
         tools=[
-            delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent, 
+            delegate_to_calendar_agent, delegate_to_reminder_agent, 
             open_links, open_app, get_recent_projects,
             list_reminders, update_task_or_reminder, delete_reminder, clear_all_reminders, record_missed_reason,
-            start_recurring_reminder, stop_recurring_reminder, start_task_diary, stop_task_diary
+            start_recurring_reminder, stop_recurring_reminder, start_task_diary, stop_task_diary,
+            search_past_conversations, run_shell_command, see_screen,
+            manage_email_priorities, search_emails, send_email
         ],
         instructions=instructions
     )
@@ -651,8 +731,8 @@ def generate_karen_response(user_message: str, conversation_history: list = None
         response = karen.run(msg)
         content = response.content
         
-        # Extract memories in background
-        extract_and_save_memories(user_message, content)
+        # Extract memories in background (only here, not duplicated)
+        threading.Thread(target=extract_and_save_memories, args=(user_message, content), daemon=True).start()
         
         return content
     except Exception as e:

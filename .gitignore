@@ -6,3 +6,5 @@ dist/
 scratch/
 task_diary.csv
 temp/
+user_codex.json
+links.json

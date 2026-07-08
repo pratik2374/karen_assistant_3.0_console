@@ -2,16 +2,18 @@
   "dsa": {
     "description": "DSA practice, coding, leetcode, job interviews, maintain coding things, write coding progress",
     "links": [
-      "https://leetcode.com",
-      "https://www.geeksforgeeks.org",
-      "https://github.com"
+      "https://leetcode.com/u/pratik2374/",
+      "https://www.geeksforgeeks.org/profile/itamaexhc?tab=activity",
+      "https://dsa-memo.vercel.app/",
+      "https://www.youtube.com/playlist?list=PLbJhGqY-mq47k_WLUtzVjmarUm1EuXPj2",
+      "https://leetcode.com/studyplan/top-sql-50/"
     ]
   },
   "dev": {
     "description": "Development work, building apps, coding projects, git repositories, localhost servers",
     "links": [
-      "https://github.com",
-      "https://stackoverflow.com",
+      "https://github.com/pratik2374",
+      "https://claude.ai/chat/5532164a-bced-4bb9-8d25-a78dc4c87729",
       "http://localhost:3000"
     ]
   }

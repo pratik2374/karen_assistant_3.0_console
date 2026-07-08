@@ -82,7 +82,7 @@ def print_tasks():
         print(f"{start_time:<25} | {status_color}{task['status']:<10}{Fore.RESET} | {task['title']}")
     print("")
 
-def listen_for_live_alerts():
+def listen_for_live_alerts(conversation_history):
     """Background thread polling live_alerts collection from MongoDB."""
     while True:
         try:
@@ -91,11 +91,17 @@ def listen_for_live_alerts():
                 {"$set": {"processed": True}}
             )
             if alert:
-                # Speak the reminder/reaction alert vocally!
-                voice_service.speak_conversation(alert['message'])
+                # Speak the reminder/reaction alert vocally with emotion support!
+                mood = alert.get("mood", "neutral")
+                voice_service.speak_conversation(alert['message'], mood)
                 
                 # Output with a carriage return \r to clear prompt line cleanly
                 print(f"\r\n{Fore.MAGENTA}{Style.BRIGHT}Karen: {Fore.WHITE}{alert['message']}\n")
+                
+                # Append to conversation history so she remembers what she just autonomously said!
+                if conversation_history is not None:
+                    conversation_history.append({"role": "assistant", "content": alert['message']})
+                    
                 # Reprint the prompt so the user can continue typing
                 print(f"{Fore.CYAN}karen> {Fore.RESET}", end="", flush=True)
         except Exception:
@@ -137,8 +143,7 @@ def run_cli():
     # Process orphans on boot (background)
     threading.Thread(target=process_orphan_sessions, daemon=True).start()
 
-    # Start lazy loading ChatTTS
-    voice_service.load_chattts_lazy()
+
     
     # Clear stale pending alerts and diary prompts from previous sessions
     try:
@@ -171,11 +176,11 @@ def run_cli():
             print(f"{Fore.YELLOW}Please run: pip install sounddevice SpeechRecognition{Fore.RESET}\n")
             voice_input_mode = False
             
-    # Start background live alerts listener
-    t = threading.Thread(target=listen_for_live_alerts, daemon=True)
-    t.start()
-    
     conversation_history = []
+    
+    # Start background live alerts listener
+    t = threading.Thread(target=listen_for_live_alerts, args=(conversation_history,), daemon=True)
+    t.start()
     
     while True:
         try:

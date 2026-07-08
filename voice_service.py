@@ -210,73 +210,45 @@ def play_audio_async(filepath: str):
     threading.Thread(target=play_audio_windows, args=(filepath, True), daemon=True).start()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ChatTTS Conversational Voice
+# Conversational Voice (Edge-TTS)
 # ─────────────────────────────────────────────────────────────────────────────
-chat_model = None
-model_loading = False
+def get_emotion_params(mood: str):
+    """Maps a mood string to Edge-TTS pitch and rate adjustments for dramatic effect."""
+    mood = mood.lower()
+    if any(m in mood for m in ["annoyed", "angry", "sarcastic", "scolding", "punitive", "mad"]):
+        return "-25Hz", "-15%"  # Noticeably deeper and slower when mad
+    elif any(m in mood for m in ["happy", "affectionate", "excited", "encouraging", "sweet"]):
+        return "+25Hz", "+20%"  # Noticeably higher and faster when happy/encouraging
+    elif any(m in mood for m in ["sad", "consoling"]):
+        return "-10Hz", "-25%"  # Soft and slow when consoling
+    else:
+        return "+0Hz", "+0%"
 
-def load_chattts_lazy():
-    """Loads ChatTTS model weights in a separate thread to keep CLI startup instant."""
-    global chat_model, model_loading
-    if chat_model is not None or model_loading:
-        return
-        
-    model_loading = True
-    def run():
-        global chat_model, model_loading
-        try:
-            import ChatTTS
-            print("\n[Voice] Loading ChatTTS conversational weights in background...")
-            chat_model = ChatTTS.Chat()
-            chat_model.load(compile=False)
-            print("[Voice] ChatTTS loaded and ready for conversational replies.")
-        except Exception as e:
-            pass
-        finally:
-            model_loading = False
-            
-    threading.Thread(target=run, daemon=True).start()
-
-def speak_conversation(text: str):
-    """Synthesizes text using local ChatTTS if available; otherwise falls back to Edge-TTS."""
-    global chat_model
-    load_chattts_lazy() # Ensure we trigger loading
-    
+def speak_conversation(text: str, mood: str = "neutral"):
+    """Synthesizes text using Edge-TTS with emotion mapping."""
     # Clean text for speech output
     text = clean_speech_text(text)
     
-    # Check internet first if local ChatTTS is not loaded
-    if not is_internet_available() and chat_model is None:
+    # Check internet first
+    if not is_internet_available():
         ensure_utilities_cached()
         if os.path.exists(OFFLINE_WARNING_FILE):
             play_audio_async(OFFLINE_WARNING_FILE)
             print(f"\n{Fore.RED}[Voice Warning] Offline. Conversational audio playback disabled.{Fore.RESET}")
             return
 
-    if chat_model is not None:
-        def run_chattts():
-            try:
-                import soundfile as sf
-                wavs = chat_model.infer([text])
-                temp_file = os.path.join(TEMP_DIR, f"temp_karen_voice_{random.randint(1000, 9999)}.wav")
-                sf.write(temp_file, wavs[0][0], 24000)
-                play_audio_windows(temp_file, wait=True)
-                safe_delete_file(temp_file)
-            except Exception:
-                pass
-        threading.Thread(target=run_chattts, daemon=True).start()
-        return
-
-    # Fallback to Edge-TTS (asynchronous generation, played in background)
     def run_edgetts():
         try:
             import edge_tts
             import asyncio
             temp_file = os.path.join(TEMP_DIR, f"temp_karen_voice_{random.randint(1000, 9999)}.mp3")
             
-            # Helper to run async save inside thread loop
+            pitch, rate = get_emotion_params(mood)
+            
             async def save_voice():
-                communicate = edge_tts.Communicate(text, "en-US-AvaMultilingualNeural")
+                # Using en-US-AriaNeural to ensure she strictly speaks with a crisp, clear American English accent. 
+                # Multilingual models tend to randomly switch into Spanish/French accents for certain words.
+                communicate = edge_tts.Communicate(text, "en-US-AriaNeural", pitch=pitch, rate=rate)
                 await communicate.save(temp_file)
                 
             asyncio.run(save_voice())
@@ -291,7 +263,7 @@ def speak_conversation(text: str):
 
 class VoiceStreamer:
     """Handles sentence-by-sentence background voice synthesis and sequential audio playback."""
-    def __init__(self):
+    def __init__(self, mood: str = "neutral"):
         import queue
         self.queue = queue.Queue()
         self.buffer = ""
@@ -300,6 +272,7 @@ class VoiceStreamer:
         self.results = {}
         self.lock = threading.Lock()
         self.running = True
+        self.mood = mood
         self.thread = threading.Thread(target=self._play_loop, daemon=True)
         self.thread.start()
 
@@ -342,30 +315,22 @@ class VoiceStreamer:
         def run_synth():
             filename = None
             try:
-                # Try local ChatTTS first if it's loaded
-                global chat_model
-                if chat_model is not None:
-                    import soundfile as sf
-                    wavs = chat_model.infer([sentence])
-                    filename = os.path.join(TEMP_DIR, f"temp_stream_{idx}_{random.randint(10,99)}.wav")
-                    sf.write(filename, wavs[0][0], 24000)
+                if not is_internet_available():
+                    ensure_utilities_cached()
+                    if os.path.exists(OFFLINE_WARNING_FILE):
+                        filename = OFFLINE_WARNING_FILE
                 else:
-                    # Check internet before calling Edge-TTS
-                    if not is_internet_available():
-                        ensure_utilities_cached()
-                        if os.path.exists(OFFLINE_WARNING_FILE):
-                            filename = OFFLINE_WARNING_FILE
-                    else:
-                        # Fallback to Edge-TTS
-                        import edge_tts
-                        import asyncio
-                        filename = os.path.join(TEMP_DIR, f"temp_stream_{idx}_{random.randint(10,99)}.mp3")
+                    import edge_tts
+                    import asyncio
+                    filename = os.path.join(TEMP_DIR, f"temp_stream_{idx}_{random.randint(10,99)}.mp3")
+                    
+                    pitch, rate = get_emotion_params(self.mood)
+                    
+                    async def save_voice():
+                        communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural", pitch=pitch, rate=rate)
+                        await communicate.save(filename)
                         
-                        async def save_voice():
-                            communicate = edge_tts.Communicate(sentence, "en-US-AvaMultilingualNeural")
-                            await communicate.save(filename)
-                            
-                        asyncio.run(save_voice())
+                    asyncio.run(save_voice())
             except Exception:
                 filename = None
             finally:

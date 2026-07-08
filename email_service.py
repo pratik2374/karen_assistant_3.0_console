@@ -104,8 +104,7 @@ def triage_emails_with_llm(raw_emails, account_email):
             "Extract ONLY highly important emails or emails matching the user's priorities.",
             "For each important email, create a very short, actionable summary (e.g., 'Internship for X, stipend Y, deadline Z, [Link]').",
             "Return the result STRICTLY as a JSON array of objects with keys: 'sender', 'subject', 'actionable_summary'. If none are important, return an empty array []."
-        ],
-        response_format={"type": "json_object"} # We will parse the array out of a wrapper object
+        ]
     )
     
     prompt = f"Here are the recent emails for {account_email}. Return a JSON object with a single key 'important_emails' containing the array:\n\n{json.dumps(raw_emails)}"

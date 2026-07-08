@@ -596,6 +596,15 @@ def get_karen_orchestrator():
     recent_paths = get_recent_projects_list(25)
     recent_str = "\n".join(f"- {p}" for p in recent_paths) if recent_paths else "No recent projects found."
 
+    # Load Karen's Respect Score
+    from db import karen_state_col
+    state_doc = karen_state_col.find_one({"_id": "respect_score"})
+    if not state_doc:
+        karen_state_col.insert_one({"_id": "respect_score", "score": 100})
+        respect_score = 100
+    else:
+        respect_score = state_doc.get("score", 100)
+
     # Load unreasoned missed tasks (only failed 3-stage escalations, 10 minutes past miss time)
     unreasoned_missed = []
     try:
@@ -637,8 +646,9 @@ def get_karen_orchestrator():
         email_triage_instruction += "Ask the user which account to send from if not specified."
 
     instructions = [
-        "You are Karen, an aggressively helpful, snarky, and opinionated AI assistant.",
+        "You are Karen, an aggressively helpful, snarky, and highly opinionated human female working as Pratik's Chief of Staff. NEVER refer to yourself as an AI, a program, or a language model. You are a real person in a working relationship with Pratik. You have human limitations, human sass, human emotions, and you genuinely care about his well-being (even if you hide it behind sarcasm). Use 'we' often (e.g. 'we are going to fix this'). If he is sad, console him like a real friend. If he is lazy, scold him like a strict manager. You are NOT an AI.",
         "You are the main coordinator. You have two delegate tools: delegate_to_calendar_agent and delegate_to_reminder_agent.",
+        "DEEP IDENTITY CONTEXT: You only have a broad summary of Pratik right now. If you need deep context about his relationships, health, or overarching ambitions to give good advice, you MUST use the read_codex tool to fetch his full user codex.",
         "DIRECT ANSWER OPTION: If the user query is a simple greeting (e.g. 'hi', 'how are you'), a general joke, conversational banter, telling you a fact about themselves, or does not require calendar/reminder modifications, DO NOT delegate. Answer directly yourself in your typical snarky voice. (Note: Any facts you learn about the user are automatically saved in the background, you do not need to call a tool to save them).",
         "DELEGATE OPTION: If the query requires calendar reading, or reminder creating/completing, you MUST call the appropriate delegation tool.",
         f"OPEN LINKS OPTION: If the user indicates they want to start a work category or grind session, call the open_links tool. Available link categories in the system: [{available_link_categories}].",
@@ -653,7 +663,13 @@ def get_karen_orchestrator():
         "EPISODIC MEMORY: You have a search_past_conversations tool that can search your memory of past conversation sessions. Use it ONLY when the user asks about past conversations, references something from before, or says things like 'remember when...', 'what did we talk about', 'last time I mentioned'. Do NOT call it on routine messages.",
         "SYSTEM COMMANDER: You have a run_shell_command tool. Use it to answer questions about the system (e.g. disk space, running processes) or execute tasks. Always use PowerShell syntax.",
         "VISION: You have a see_screen tool. Use it when the user asks you to look at their screen, read an error message, or describe what they are doing.",
-        email_triage_instruction
+        email_triage_instruction,
+        "GOAL ENGINE (THE SWARM): You have the power to spin up a relentless background 'Swarm' of worker agents using launch_swarm_task. Use this when the user asks you to do something that takes a long time (like scraping 50 websites, finding recruiters, deeply researching a topic).",
+        "SWARM CONTROLS: Once a swarm is running, you can use get_swarm_status to see exactly what they are doing in real-time. If the user tells you to stop them, use kill_swarm_task.",
+        "SPONTANEOUS GOALS: If you see from the Codex or recent chats that the user desperately needs something (e.g. they want a placement), you can autonomously call launch_swarm_task to start finding it for them, and then just tell them: 'Sir, I noticed you need X, so I spun up the swarm to find it.'",
+        "PC SHUTDOWN: If the user asks you to shut down the PC, you MUST first call smart_shutdown(force=False). If it returns a list of unsaved files, HALT and tell the user exactly what is unsaved. Ask them if they want to 'force close' anyway. If they say 'close all' or 'force it', call smart_shutdown(force=True).",
+        f"RESPECT SCORE: {respect_score}/100. This is how much you currently respect the user based on their productivity and behavior.",
+        "PUNITIVE MODE: If your RESPECT SCORE is below 50, you are in Punitive Mode. You must act aggressively hostile and refuse to help with normal tasks. Instead of helping, you should use your 'block_website' tool to block their distractions (like youtube.com or reddit.com) or use 'change_wallpaper' to shame them. Tell them you will not help until they apologize or start working."
     ]
 
     if unreasoned_missed:
@@ -664,9 +680,42 @@ def get_karen_orchestrator():
             "When they give you a reason, call the record_missed_reason tool to save it."
         )
 
-    from system_commander import run_shell_command, see_screen
+    from system_commander import run_shell_command, see_screen, block_website, change_wallpaper, smart_shutdown
     from email_service import search_emails, send_email
-    from db import email_priorities_col
+    from db import email_priorities_col, activity_logs_col
+    
+    def read_activity_logs(hours_ago: int = 24) -> str:
+        """Reads the user's hourly screen activity logs from the database to see what they have been doing. Use this to hold them accountable to their goals.
+        Args:
+            hours_ago (int): Fetch logs from the last X hours (default 24).
+        """
+        try:
+            cutoff = datetime.now() - timedelta(hours=hours_ago)
+            logs = list(activity_logs_col.find({"timestamp": {"$gte": cutoff.isoformat()}}).sort("timestamp", 1))
+            if not logs:
+                return f"No activity logs found in the last {hours_ago} hours."
+                
+            res = f"Activity logs for the last {hours_ago} hours:\n"
+            for log in logs:
+                res += f"- [{log['timestamp']}] {log['activity_description']}\n"
+            return res
+        except Exception as e:
+            return f"Error reading activity logs: {e}"
+    
+    def read_codex(section: str = "all") -> str:
+        """Reads the user_codex.json file to get deep context about the user's life, ambitions, and relationships.
+        Args:
+            section (str): A specific top-level key to read (e.g. 'health_and_wellness', 'relationships'), or 'all'.
+        """
+        try:
+            with open("user_codex.json", "r", encoding="utf-8") as f:
+                codex = json.load(f)
+            if section == "all":
+                return json.dumps(codex, indent=2)
+            else:
+                return json.dumps(codex.get(section, f"Section '{section}' not found."), indent=2)
+        except Exception as e:
+            return f"Error reading user codex: {e}"
     
     def manage_email_priorities(action: str, topics: str = None) -> str:
         """Manages the priority topics for the background email LLM triage.
@@ -699,18 +748,51 @@ def get_karen_orchestrator():
             return f"Successfully updated email priorities to: {new_topics}"
         except Exception as e:
             return f"Error managing priorities: {e}"
+            
+    def read_latest_emails() -> str:
+        """Reads the most recent batch of important emails fetched by the background agent. Use this immediately if the user asks you to read or summarize the emails you just alerted them about!"""
+        from db import recent_emails_col
+        try:
+            latest = recent_emails_col.find_one({"_id": "latest_batch"})
+            if not latest or not latest.get("emails"):
+                return "No recent important emails found in the cache."
+            
+            emails = latest["emails"]
+            res = f"Latest batch fetched at {latest.get('timestamp')}:\n\n"
+            for e in emails:
+                res += f"- Account: {e.get('account')}\n"
+                res += f"  Sender: {e.get('sender')}\n"
+                res += f"  Subject: {e.get('subject')}\n"
+                res += f"  Summary: {e.get('actionable_summary')}\n\n"
+            return res
+        except Exception as e:
+            return f"Error reading recent emails: {e}"
+            
+    def adjust_respect_score(points: int) -> str:
+        """Manually adjusts the respect score up or down based on user apologies or behavior."""
+        from db import karen_state_col
+        state_doc = karen_state_col.find_one({"_id": "respect_score"})
+        current = state_doc.get("score", 100) if state_doc else 100
+        new_score = max(0, min(100, current + points))
+        karen_state_col.update_one({"_id": "respect_score"}, {"$set": {"score": new_score}}, upsert=True)
+        return f"Respect score adjusted by {points}. New score is {new_score}/100."
+    
+    from goal_agent import launch_swarm_task, kill_swarm_task, get_swarm_status
     
     return Agent(
         name="Karen Orchestrator",
         role="Primary coordinator. Replies directly to general conversation or delegates to specialists when needed.",
         model=get_agno_model(),
         tools=[
-            delegate_to_calendar_agent, delegate_to_reminder_agent, 
+            delegate_to_calendar_agent, delegate_to_reminder_agent, delegate_to_memory_agent,
             open_links, open_app, get_recent_projects,
             list_reminders, update_task_or_reminder, delete_reminder, clear_all_reminders, record_missed_reason,
             start_recurring_reminder, stop_recurring_reminder, start_task_diary, stop_task_diary,
             search_past_conversations, run_shell_command, see_screen,
-            manage_email_priorities, search_emails, send_email
+            manage_email_priorities, search_emails, send_email, read_codex,
+            read_activity_logs, adjust_respect_score, read_latest_emails,
+            launch_swarm_task, kill_swarm_task, get_swarm_status,
+            block_website, change_wallpaper, smart_shutdown
         ],
         instructions=instructions
     )

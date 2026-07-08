@@ -28,13 +28,18 @@ db = client[MONGO_DB_NAME]
 tasks_col = db["tasks"]
 saga_states_col = db["saga_states"]
 memories_col = db["memories"]
+sessions_col = db["sessions"]
 live_alerts_col = db["live_alerts"]
+recent_emails_col = db["recent_emails"]
 missed_reasons_col = db["missed_reasons"]
 recurring_reminders_col = db["recurring_reminders"]
 diary_prompts_col = db["diary_prompts"]
 conversation_sessions_col = db["conversation_sessions"]
 email_sync_state_col = db["email_sync_state"]
 email_priorities_col = db["email_priorities"]
+activity_logs_col = db["activity_logs"]
+swarm_tasks_col = db["swarm_tasks"]
+karen_state_col = db["karen_state"]
 
 def init_db():
     """Initializes indexes on the collections for optimal query performance."""
@@ -42,6 +47,7 @@ def init_db():
     saga_states_col.create_index("task_id", unique=True)
     conversation_sessions_col.create_index("session_id", unique=True)
     email_sync_state_col.create_index("email", unique=True)
+    swarm_tasks_col.create_index("task_id", unique=True)
     print(f"[DB] Initialized MongoDB database '{MONGO_DB_NAME}' with indexes.")
 
 if __name__ == "__main__":

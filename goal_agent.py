@@ -1,7 +1,7 @@
 """
-Autonomous Research Swarm  (v4 - OpenAI GPT-4o + real agno tools)
+Autonomous Research Swarm  (v6 - bounded-context, OpenAI GPT-4o)
 
-Public flow / connectors unchanged (model is OpenAI now):
+Public flow / connectors unchanged (model is OpenAI):
     launch_swarm_task(goal) -> task_id
     kill_swarm_task(task_id)
     get_swarm_status(task_id=None)
@@ -9,29 +9,25 @@ Public flow / connectors unchanged (model is OpenAI now):
 Connectors: OpenAI (agno) + MongoDB (swarm_tasks_col, live_alerts_col)
 + Notepad popup + autonomous live alerts.
 
-The WORKER agent now has real agno tools (LLM decides when to use them).
-This is safe on GPT-4o: the earlier `tool_use_failed` was Groq/llama emitting
-its native <function=...> text instead of JSON tool-calls - an OpenAI model
-does native function-calling correctly.
+WHY THIS VERSION (the context_length_exceeded fix)
+--------------------------------------------------
+When the LLM held the tools, every fetched web page was appended to the
+conversation and re-sent each turn. Big pages (e.g. a ScienceDirect article,
+or Serper's uncapped scrape.serper.dev output) pushed the request past GPT-4o's
+128k limit -> HTTP 400 context_length_exceeded, which is NON-retryable and
+kills the subtask. Prompting can't fix that; it's structural.
 
-TOOL SYNTAX FIXED (verified against current agno docs):
-    from agno.tools.serper import SerperTools          # NOT SerperApiTools
-    from agno.tools.googlesearch import GoogleSearchTools
-    FileTools(base_dir=Path(...))                       # needs Path, not str
-Every toolkit is loaded behind a guard: if its pip package / API key is
-missing it is skipped, and the swarm still runs on built-in Python fallbacks
-(search_web / fetch_url) that need no dependencies at all.
+FIX: retrieval happens in PYTHON with hard size caps; the LLM is called with
+NO tools and only receives trimmed text. Context is therefore bounded and can
+never overflow. Serper (if you set the key) is used for SEARCH ONLY (small
+structured snippets) - never its scrape endpoint - so the 500s are gone too.
 
-TO LIGHT UP THE BEST TOOLS (any subset; all optional):
-    export SERPER_API_KEY=...        # BEST: Google search + news + scholar + scrape
-                                     #       (free tier at serper.dev, no pip needed)
-    pip install ddgs                 # DuckDuckGoTools
-    pip install googlesearch-python pycountry   # GoogleSearchTools
-    pip install crawl4ai && crawl4ai-setup      # Crawl4aiTools (JS pages)
-    pip install newspaper4k lxml_html_clean     # Newspaper4kTools
+Every page is capped to PAGE_CHAR_CAP and the whole per-subtask context to
+SUBTASK_CONTEXT_CAP, so a single request stays comfortably under the limit.
 
-ENV (models):
+ENV:
     OPENAI_API_KEY (required)
+    SERPER_API_KEY (optional; free at serper.dev -> better search, snippets only)
     SWARM_WORKER_MODEL  default gpt-4o
     SWARM_SYNTH_MODEL   default gpt-4o
     SWARM_PLANNER_MODEL default gpt-4o-mini
@@ -40,16 +36,14 @@ ENV (models):
 
 import os
 import re
-import csv
 import json
 import time
 import uuid
 import subprocess
 import urllib.request
 import urllib.parse
-from pathlib import Path
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
@@ -68,9 +62,17 @@ EXTRACT_MODEL = os.getenv("SWARM_EXTRACT_MODEL", "gpt-4o-mini")
 MAX_CONCURRENT_SWARMS = int(os.getenv("SWARM_MAX_CONCURRENT", "3"))
 MAX_SUBTASKS          = int(os.getenv("SWARM_MAX_SUBTASKS", "10"))
 TARGET_SOURCES        = int(os.getenv("SWARM_TARGET_SOURCES", "20"))
+SOURCES_PER_SUBTASK   = int(os.getenv("SWARM_SOURCES_PER_SUBTASK", "5"))
+FETCH_WORKERS         = int(os.getenv("SWARM_FETCH_WORKERS", "4"))
+
+# --- Hard caps that make context overflow impossible ---
+PAGE_CHAR_CAP         = int(os.getenv("SWARM_PAGE_CHAR_CAP", "3000"))     # per page
+SUBTASK_CONTEXT_CAP   = int(os.getenv("SWARM_SUBTASK_CONTEXT_CAP", "12000"))  # per worker call
+SYNTH_BUNDLE_CAP      = int(os.getenv("SWARM_SYNTH_BUNDLE_CAP", "24000"))
+SUBTASK_OUTPUT_CAP    = int(os.getenv("SWARM_SUBTASK_OUTPUT_CAP", "4000"))
+
 TASK_DEADLINE_SECONDS = int(os.getenv("SWARM_DEADLINE_SECONDS", "5400"))  # 90 min
 LLM_RETRIES           = int(os.getenv("SWARM_LLM_RETRIES", "5"))
-ENABLE_REASONING      = os.getenv("SWARM_REASONING", "1") != "0"
 NET_TIMEOUT           = int(os.getenv("SWARM_NET_TIMEOUT", "15"))
 
 REPORTS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "research_reports")
@@ -125,9 +127,13 @@ def _retry(fn, tries=LLM_RETRIES, base=2.0, label="op"):
         try:
             return fn()
         except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            # context_length_exceeded is not fixable by retrying -> stop now.
+            if "context_length_exceeded" in msg or "maximum context length" in msg:
+                raise
             last = e
             wait = base ** attempt
-            m = re.search(r"try again in ([\d.]+)s", str(e))
+            m = re.search(r"try again in ([\d.]+)s", msg)
             if m:
                 wait = max(wait, float(m.group(1)) + 0.5)
             if attempt < tries:
@@ -136,10 +142,31 @@ def _retry(fn, tries=LLM_RETRIES, base=2.0, label="op"):
 
 
 # ---------------------------------------------------------------------------
-# Built-in fallback tools (plain functions, zero dependencies, always work)
+# Retrieval - pure Python, size-capped (no LLM tool-calling anywhere)
 # ---------------------------------------------------------------------------
-def search_web(query: str) -> str:
-    """Search the web (DuckDuckGo). Use this to find pages when other search tools fail."""
+def _serper_search(query, k=8):
+    """High-quality search via Serper /search (snippets only, no scraping)."""
+    key = os.getenv("SERPER_API_KEY")
+    if not key:
+        return None
+    body = json.dumps({"q": query, "num": k}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://google.serper.dev/search", data=body,
+        headers={"X-API-KEY": key, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=NET_TIMEOUT) as r:
+            data = json.loads(r.read().decode("utf-8", errors="ignore"))
+    except Exception:  # noqa: BLE001
+        return None
+    hits = []
+    for o in (data.get("organic") or [])[:k]:
+        hits.append({"title": o.get("title", ""), "url": o.get("link", ""),
+                     "snippet": o.get("snippet", "")})
+    return hits
+
+
+def _ddg_search(query, k=8):
+    """Fallback search via DuckDuckGo HTML (no dependency)."""
     def _do():
         url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -147,113 +174,94 @@ def search_web(query: str) -> str:
             return r.read().decode("utf-8", errors="ignore")
     try:
         html = _retry(_do, tries=3, label="search")
-    except Exception as e:  # noqa: BLE001
-        return f"Search failed for '{query}': {e}"
+    except Exception:  # noqa: BLE001
+        return []
     clean = lambda x: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", x)).strip()
     anchors = re.findall(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.S)
     snips = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.S)
-    if not anchors:
-        return f"No results for '{query}'."
-    out = [f"Search results for: {query}"]
-    for i, (href, title) in enumerate(anchors[:8]):
+    hits = []
+    for i, (href, title) in enumerate(anchors[:k]):
         href = href.replace("&amp;", "&")
         real = urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get("uddg", [href])[0] \
             if "uddg=" in href else href
         if real.startswith("//"):
             real = "https:" + real
-        out.append(f"{i+1}. {clean(title)}\n   {real}\n   {clean(snips[i]) if i < len(snips) else ''}")
-    return "\n".join(out)
+        hits.append({"title": clean(title), "url": real,
+                     "snippet": clean(snips[i]) if i < len(snips) else ""})
+    return hits
 
 
-def fetch_url(url: str) -> str:
-    """Open a URL and return its readable text content (HTML tags stripped)."""
+def _search(query, k=8):
+    return _serper_search(query, k) or _ddg_search(query, k)
+
+
+def fetch_url(url):
+    """Fetch a page and return readable text, hard-capped to PAGE_CHAR_CAP."""
     def _do():
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=NET_TIMEOUT) as r:
             ctype = r.headers.get("Content-Type", "")
             if "html" not in ctype and "text" not in ctype:
-                return f"(skipped non-text content: {ctype})"
-            return r.read().decode("utf-8", errors="ignore")
+                return ""
+            return r.read(1_500_000).decode("utf-8", errors="ignore")  # cap raw bytes too
     try:
         html = _retry(_do, tries=2, label="fetch")
     except Exception as e:  # noqa: BLE001
         return f"(fetch failed: {e})"
     html = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", html, flags=re.S | re.I)
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()[:8000]
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()[:PAGE_CHAR_CAP]
+
+
+def _gather(task_id, queries, seen, deadline, max_new):
+    hits = []
+    for q in queries:
+        _ensure_alive(task_id, deadline)
+        for h in _search(q, k=8):
+            u = h.get("url")
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            hits.append(h)
+            if len(hits) >= max_new:
+                return hits
+    return hits
+
+
+def _fetch_many(task_id, hits, deadline):
+    _ensure_alive(task_id, deadline)
+    out = []
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as ex:
+        futs = {ex.submit(fetch_url, h["url"]): h for h in hits}
+        for fut in as_completed(futs):
+            h = futs[fut]
+            try:
+                text = fut.result()
+            except Exception as e:  # noqa: BLE001
+                text = f"(fetch failed: {e})"
+            out.append({**h, "text": text})
+    return out
+
+
+def _build_context(pages):
+    """Assemble a size-capped context blob from fetched pages."""
+    blob, used = [], 0
+    for p in pages:
+        chunk = f"SOURCE: {p.get('title','')} ({p.get('url','')})\n{p.get('text','')}\n"
+        if used + len(chunk) > SUBTASK_CONTEXT_CAP:
+            break
+        blob.append(chunk)
+        used += len(chunk)
+    return "\n---\n".join(blob) if blob else "(no readable sources retrieved)"
 
 
 # ---------------------------------------------------------------------------
-# agno toolkit loader (guarded) + curated worker toolset
+# LLM (agno Agent, NO tools attached anywhere)
 # ---------------------------------------------------------------------------
-def _load(modpath, clsname, **kwargs):
-    """Import agno.tools.<modpath>.<clsname>(**kwargs); return instance or None."""
-    try:
-        mod = __import__(f"agno.tools.{modpath}", fromlist=[clsname])
-        return getattr(mod, clsname)(**kwargs)
-    except Exception as e:  # noqa: BLE001
-        print(f"[Swarm] toolkit {clsname} unavailable: {e}")
-        return None
-
-
-def _first(*candidates):
-    """Return the first toolkit that loads, or None."""
-    for modpath, clsname, kwargs in candidates:
-        tk = _load(modpath, clsname, **kwargs)
-        if tk:
-            return tk
-    return None
-
-
-def _build_worker_tools(task_dir):
-    """Curated, deduped toolset for the worker. Everything degrades gracefully."""
-    tools = []
-
-    # --- SEARCH: prefer Serper (Google + news + scholar + scrape), else free ---
-    search = None
-    if os.getenv("SERPER_API_KEY"):
-        search = _load("serper", "SerperTools", num_results=10)
-    if search is None:
-        search = _first(("duckduckgo", "DuckDuckGoTools", {}),
-                        ("googlesearch", "GoogleSearchTools", {}))
-    if search:
-        tools.append(search)
-
-    # --- READ / CRAWL a page ---
-    reader = _first(("crawl4ai", "Crawl4aiTools", {"max_length": None}),
-                    ("newspaper4k", "Newspaper4kTools", {}),
-                    ("website", "WebsiteTools", {}))
-    if reader:
-        tools.append(reader)
-
-    # --- THINK (scratchpad) ---
-    if ENABLE_REASONING:
-        rt = _load("reasoning", "ReasoningTools", add_instructions=True)
-        if rt:
-            tools.append(rt)
-
-    # --- SAVE scraped material to disk (FileTools needs a Path, not a str) ---
-    ft = _load("file", "FileTools", base_dir=Path(task_dir), save_files=True, read_files=True)
-    if ft:
-        tools.append(ft)
-
-    # --- Always-on Python fallbacks so search+read work with zero installs ---
-    tools.extend([search_web, fetch_url])
-    return tools
-
-
-# ---------------------------------------------------------------------------
-# Agents
-# ---------------------------------------------------------------------------
-def _agent(name, role, model_id, instructions, tools=None):
-    return Agent(
-        name=name, role=role,
-        model=OpenAIChat(id=model_id, api_key=get_openai_api_key()),
-        instructions=instructions, tools=tools or [], markdown=True,
-    )
-
-
-def _run(agent, message):
-    resp = _retry(lambda: agent.run(message), label=f"{agent.name}.run")
+def _ask(model_id, name, role, instructions, message):
+    agent = Agent(name=name, role=role,
+                  model=OpenAIChat(id=model_id, api_key=get_openai_api_key()),
+                  instructions=instructions, markdown=True)
+    resp = _retry(lambda: agent.run(message), label=f"{name}.run")
     return (resp.content or "").strip()
 
 
@@ -278,15 +286,14 @@ def _extract_json(raw, want="array"):
 def _plan(task_id, goal, deadline):
     _ensure_alive(task_id, deadline)
     _update(task_id, current_thought="Planning: decomposing the goal into subtasks...")
-    planner = _agent(
-        "Swarm Planner",
+    raw = _ask(
+        PLANNER_MODEL, "Swarm Planner",
         "Senior research planner that decomposes a goal into concrete search steps.",
-        PLANNER_MODEL,
         ["Break the goal into 3-10 concrete, ordered research subtasks.",
          "Cover different angles, source types, and a verification step.",
          "Respond with ONLY a JSON array of strings. No prose, no code fences."],
+        f"GOAL:\n{goal}\n\nReturn the JSON array of subtasks.",
     )
-    raw = _run(planner, f"GOAL:\n{goal}\n\nReturn the JSON array of subtasks.")
     steps = _extract_json(raw, "array")
     if not steps:
         steps = [l.strip("-*0123456789. )").strip()
@@ -295,108 +302,92 @@ def _plan(task_id, goal, deadline):
     return steps[:MAX_SUBTASKS]
 
 
-def _research(task_id, goal, subtasks, task_dir, deadline):
-    tools = _build_worker_tools(task_dir)
-    per_task = max(3, TARGET_SOURCES // max(len(subtasks), 1))
-    worker = _agent(
-        "Research Worker",
-        "Relentless background researcher and data grinder. You work for Karen.",
-        WORKER_MODEL,
-        [f"You execute ONE subtask of a larger research goal. Be exhaustive and factual.",
-         f"Use your search tool(s), then open promising results with the read/scrape tools.",
-         f"Consult at least {per_task} distinct sources for this subtask.",
-         "Extract concrete facts: names, exact URLs, emails, dates, numbers, job descriptions.",
-         "Put the source URL next to every fact. Prefer primary sources.",
-         "Use think()/analyze() to plan and self-check when the answer is non-obvious.",
-         "Never invent facts, emails, or URLs. If sources are thin, say so plainly.",
-         "Return a focused, source-cited result for THIS subtask only."],
-        tools=tools,
+def _queries_for(subtask, goal):
+    raw = _ask(
+        PLANNER_MODEL, "Query Writer", "You write effective web search queries.",
+        ["Given a research subtask, output 3 diverse web search queries.",
+         "Respond with ONLY a JSON array of strings."],
+        f"GOAL: {goal}\nSUBTASK: {subtask}\nReturn 3 queries as a JSON array.",
     )
-    results, total = [], len(subtasks)
+    qs = _extract_json(raw, "array")
+    qs = [str(q).strip() for q in qs if str(q).strip()] if isinstance(qs, list) else []
+    return qs[:3] or [subtask]
+
+
+def _research(task_id, goal, subtasks, deadline):
+    seen, results, total = set(), [], len(subtasks)
+    per_task = max(SOURCES_PER_SUBTASK, TARGET_SOURCES // max(total, 1))
+
     for i, sub in enumerate(subtasks, 1):
-        _ensure_alive(task_id, deadline)   # hard kill / deadline boundary
-        _update(task_id, current_thought=f"[{i}/{total}] {sub[:90]}",
+        _ensure_alive(task_id, deadline)
+        _update(task_id, current_thought=f"[{i}/{total}] Searching: {sub[:80]}",
                 progress={"done": i - 1, "total": total})
-        ctx = ""
-        if results:
-            prev = "\n\n".join(f"### {r['subtask']}\n{r['output'][:700]}" for r in results[-2:])
-            ctx = f"\nEarlier findings to build on (don't refetch the same sources):\n{prev}\n"
-        prompt = (f"OVERALL GOAL: {goal}\nYOUR SUBTASK ({i}/{total}): {sub}{ctx}\n"
-                  f"Research this thoroughly and return your cited findings.")
-        try:
-            out = _run(worker, prompt)
-        except SwarmKilled:
-            raise
-        except Exception as e:  # noqa: BLE001
-            out = f"(subtask failed after retries: {e})"
-        results.append({"subtask": sub, "output": out})
-        _update(task_id, partial_results=results, progress={"done": i, "total": total})
+
+        queries = _queries_for(sub, goal)
+        hits = _gather(task_id, queries, seen, deadline, per_task)
+        _update(task_id, current_thought=f"[{i}/{total}] Reading {len(hits)} sources...")
+        pages = _fetch_many(task_id, hits, deadline)
+        context = _build_context(pages)
+
+        _ensure_alive(task_id, deadline)
+        _update(task_id, current_thought=f"[{i}/{total}] Analyzing findings...")
+        out = _ask(
+            WORKER_MODEL, "Research Worker",
+            "Relentless researcher and data grinder. You work for Karen.",
+            ["Using ONLY the provided sources, extract concrete findings for the subtask.",
+             "Pull names, exact URLs, emails, dates, numbers, job descriptions.",
+             "Put the source URL next to each fact. Do not invent facts or URLs.",
+             "If the sources are thin, say so plainly."],
+            f"OVERALL GOAL: {goal}\nSUBTASK ({i}/{total}): {sub}\n\nSOURCES:\n{context}\n\n"
+            f"Write cited findings for this subtask.",
+        )
+        results.append({"subtask": sub, "output": out[:SUBTASK_OUTPUT_CAP],
+                        "source_count": len(pages)})
+        _update(task_id, partial_results=results, progress={"done": i, "total": total},
+                sources_read=len(seen))
     return results
 
 
 def _synthesize(task_id, goal, results, deadline):
     _ensure_alive(task_id, deadline)
     _update(task_id, current_thought="Synthesizing the final report...")
-    synth = _agent(
-        "Synthesizer",
+    bundle = "\n\n".join(f"## {r['subtask']}\n{r['output']}" for r in results)[:SYNTH_BUNDLE_CAP]
+    return _ask(
+        SYNTH_MODEL, "Synthesizer",
         "Editor that fuses subtask findings into one detailed, cited report.",
-        SYNTH_MODEL,
         ["Fuse the findings into ONE cohesive report. Deduplicate and resolve conflicts.",
          "Keep concrete facts, URLs and sources.",
          "CRITICAL FORMAT: 2-3 line summary, then a line '---', then the full report."],
+        f"GOAL: {goal}\n\nSUBTASK FINDINGS:\n{bundle}\n\nWrite the final report.",
     )
-    bundle = "\n\n".join(f"## {r['subtask']}\n{r['output']}" for r in results)
-    if len(bundle) > 24000:
-        bundle = bundle[:24000]
-    return _run(synth, f"GOAL: {goal}\n\nSUBTASK FINDINGS:\n{bundle}\n\nWrite the final report.")
 
 
 def _extract_records(task_id, goal, report, deadline):
     _ensure_alive(task_id, deadline)
     _update(task_id, current_thought="Extracting structured records...")
-    extractor = _agent(
-        "Extractor",
+    raw = _ask(
+        EXTRACT_MODEL, "Extractor",
         "Precise data extractor converting a report into structured JSON rows.",
-        EXTRACT_MODEL,
         ["Extract the key items the goal asked for as JSON.",
          "Return ONLY a JSON array of objects. No prose, no code fences.",
          "Use whichever apply: title, name, url, email, organization, location, "
          "description, date, notes. Omit missing fields. Return [] if nothing fits."],
+        f"GOAL: {goal}\n\nREPORT:\n{report[:12000]}\n\nReturn the JSON array.",
     )
-    raw = _run(extractor, f"GOAL: {goal}\n\nREPORT:\n{report[:12000]}\n\nReturn the JSON array.")
     recs = _extract_json(raw, "array")
     return recs if isinstance(recs, list) else []
 
 
 # ---------------------------------------------------------------------------
-# Storage
+# Storage (Notepad .txt only)
 # ---------------------------------------------------------------------------
-def _store(task_id, goal, report, records):
+def _store_report(task_id, goal, report):
     os.makedirs(REPORTS_ROOT, exist_ok=True)
-    task_dir = os.path.join(REPORTS_ROOT, task_id[:8])
-    os.makedirs(task_dir, exist_ok=True)
     safe = "".join(c if c.isalnum() else "_" for c in goal[:30])
-
-    txt_path = os.path.join(task_dir, f"SwarmReport_{safe}.txt")
-    with open(txt_path, "w", encoding="utf-8") as f:
+    path = os.path.join(REPORTS_ROOT, f"SwarmReport_{safe}_{task_id[:6]}.txt")
+    with open(path, "w", encoding="utf-8") as f:
         f.write(report)
-    with open(os.path.join(task_dir, "report.md"), "w", encoding="utf-8") as f:
-        f.write(report)
-
-    if records:
-        with open(os.path.join(task_dir, "records.json"), "w", encoding="utf-8") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
-        cols = []
-        for r in records:
-            for k in r:
-                if k not in cols:
-                    cols.append(k)
-        with open(os.path.join(task_dir, "records.csv"), "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=cols)
-            w.writeheader()
-            for r in records:
-                w.writerow({k: r.get(k, "") for k in cols})
-    return txt_path
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -404,21 +395,19 @@ def _store(task_id, goal, report, records):
 # ---------------------------------------------------------------------------
 def worker_loop(task_id, goal):
     deadline = time.time() + TASK_DEADLINE_SECONDS
-    task_dir = os.path.join(REPORTS_ROOT, task_id[:8])
-    os.makedirs(task_dir, exist_ok=True)
     try:
         _update(task_id, status="RUNNING", current_thought="Booting OpenAI research orchestrator...")
 
         subtasks = _plan(task_id, goal, deadline)
         _update(task_id, plan=subtasks)
 
-        results = _research(task_id, goal, subtasks, task_dir, deadline)
+        results = _research(task_id, goal, subtasks, deadline)
         report  = _synthesize(task_id, goal, results, deadline)
         records = _extract_records(task_id, goal, report, deadline)
         _ensure_alive(task_id, deadline)
 
         summary = report.split("---", 1)[0].strip() if "---" in report else "Swarm research completed."
-        txt_path = _store(task_id, goal, report, records)
+        txt_path = _store_report(task_id, goal, report)
 
         _update(task_id, status="COMPLETED", result=report, records=records,
                 record_count=len(records), report_path=txt_path,
@@ -430,7 +419,7 @@ def worker_loop(task_id, goal):
         except Exception as e:  # noqa: BLE001
             print(f"[Swarm] Failed to open Notepad: {e}")
 
-        extra = f" Extracted {len(records)} structured records." if records else ""
+        extra = f" Extracted {len(records)} structured records (kept in DB)." if records else ""
         live_alerts_col.insert_one({
             "message": f"Swarm Task Completed! {summary}{extra}\n"
                        f"I've popped the full report open in Notepad for you.",
@@ -462,8 +451,8 @@ def launch_swarm_task(goal: str) -> str:
         "task_id": task_id, "goal": goal, "status": "QUEUED",
         "current_thought": "Waiting for a free worker slot...",
         "result": None, "plan": None, "partial_results": [], "records": [],
-        "progress": {"done": 0, "total": 0}, "kill_flag": False,
-        "created_at": _now(), "updated_at": _now(),
+        "progress": {"done": 0, "total": 0}, "sources_read": 0,
+        "kill_flag": False, "created_at": _now(), "updated_at": _now(),
     })
     fut = _executor.submit(worker_loop, task_id, goal)
     _active_swarms[task_id] = fut
@@ -474,7 +463,7 @@ def kill_swarm_task(task_id: str) -> str:
     res = swarm_tasks_col.update_one({"task_id": task_id}, {"$set": {"kill_flag": True}})
     if res.matched_count == 0:
         return f"Task {task_id} not found."
-    return f"Task {task_id} marked for termination. It stops at the next subtask boundary."
+    return f"Task {task_id} marked for termination. It stops at the next control boundary."
 
 
 def get_swarm_status(task_id: str = None) -> str:
@@ -484,7 +473,8 @@ def get_swarm_status(task_id: str = None) -> str:
             return "Not found."
         p = t.get("progress") or {}
         s = (f"Task: {t['goal'][:50]}...\nStatus: {t['status']}\n"
-             f"Progress: {p.get('done', 0)}/{p.get('total', 0)} subtasks\n"
+             f"Progress: {p.get('done', 0)}/{p.get('total', 0)} subtasks | "
+             f"{t.get('sources_read', 0)} sources read\n"
              f"Current Thought: {t.get('current_thought')}")
         if t.get("record_count"):
             s += f"\nStructured records: {t['record_count']}"

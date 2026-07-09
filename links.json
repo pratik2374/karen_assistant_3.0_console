@@ -9,11 +9,12 @@
       "https://leetcode.com/studyplan/top-sql-50/"
     ]
   },
-  "dev": {
-    "description": "Development work, building apps, coding projects, git repositories, localhost servers",
+  "internship": {
+    "description": "internship work, tasks, solar chatbot",
     "links": [
-      "https://github.com/pratik2374",
+      "https://colab.research.google.com/",
       "https://claude.ai/chat/5532164a-bced-4bb9-8d25-a78dc4c87729",
+      "https://docs.google.com/spreadsheets/d/1pfZTKRIQf7EoW4E4AGX8qu8WYHWYD1flpqeZrhmFKW8/edit",
       "http://localhost:3000"
     ]
   }

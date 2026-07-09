@@ -32,14 +32,27 @@ def run_proactive_checks():
             try:
                 important_emails = fetch_new_emails()
                 if important_emails:
-                    # Summarize the count and accounts
-                    acc_counts = {}
-                    for e in important_emails:
-                        acc = e["account"]
-                        acc_counts[acc] = acc_counts.get(acc, 0) + 1
-                        
-                    alert_text = f"Hey, you have {len(important_emails)} new important emails. "
-                    alert_text += ", ".join([f"{count} on {acc}" for acc, count in acc_counts.items()]) + "."
+                    # Format the live alert dynamically based on email count
+                    if len(important_emails) <= 3:
+                        alert_text = f"Hey, you have {len(important_emails)} new important emails. "
+                        for e in important_emails:
+                            acc = e.get("account", "")
+                            acc_name = "college mail" if acc == "123103006@nitkkr.ac.in" else acc
+                            sender = e.get("sender", "Unknown")
+                            if "<" in sender:
+                                sender = sender.split("<")[0].strip()
+                            summary = e.get("actionable_summary", "No summary.")
+                            alert_text += f"One from {sender} on your {acc_name}: {summary} "
+                    else:
+                        acc_counts = {}
+                        for e in important_emails:
+                            acc = e.get("account", "")
+                            acc = "college mail" if acc == "123103006@nitkkr.ac.in" else acc
+                            acc_counts[acc] = acc_counts.get(acc, 0) + 1
+                            
+                        alert_text = f"Hey, you have {len(important_emails)} new important emails. "
+                        alert_text += ", ".join([f"{count} on {acc}" for acc, count in acc_counts.items()]) + ". "
+                        alert_text += "Ask me to read them to you for the full details."
                     
                     # Store the actual emails in the database so Karen can read them instantly
                     from db import live_alerts_col, recent_emails_col
@@ -67,66 +80,48 @@ def run_proactive_checks():
             print("[Proactive Agent] Taking hourly screen snapshot for activity logging & relational checks...")
             try:
                 # Capture and extract context
-                vision_prompt = """Describe exactly what the user is doing on their computer right now based on this screenshot. Be concise. Focus on applications open, productivity level, and specific topics being viewed.
-After your description, if you strongly feel you should verbally interrupt them (e.g. they are wasting time on YouTube when they should be coding, or you want to praise them for hard work), append a JSON block at the very end of your response exactly like this:
-```json
-{
-  "speak": true,
-  "message": "Oh, YouTube again? Close the tab.",
-  "mood": "annoyed",
-  "respect_delta": -10
-}
-```
-If they are doing exactly what they should be doing (e.g. deep in code), you can optionally reward them with positive points: `"respect_delta": 5`.
-If you do not want to interrupt them, do not output the JSON.
-"""
+                vision_prompt = "Describe exactly what the user is doing on their computer right now based on this screenshot. Be concise. Focus on applications open, productivity level, and specific topics being viewed."
                 response_text = see_screen(vision_prompt)
                 
                 if response_text and not response_text.startswith("Error"):
-                    activity_description = response_text
-                    speak = False
-                    message = ""
-                    mood = "neutral"
-                    respect_delta = 0
+                    activity_description = response_text.strip()
                     
-                    # Try to parse JSON if it exists
-                    if "```json" in response_text:
-                        parts = response_text.split("```json")
-                        activity_description = parts[0].strip()
-                        json_str = parts[1].split("```")[0].strip()
-                        try:
-                            data = json.loads(json_str)
-                            if data.get("speak"):
-                                speak = True
-                                message = data.get("message", "")
-                                mood = data.get("mood", "neutral")
-                                respect_delta = data.get("respect_delta", 0)
-                        except Exception as e:
-                            print(f"[Proactive Agent] Error parsing JSON from vision LLM: {e}")
-                            
                     activity_logs_col.insert_one({
                         "timestamp": datetime.now().isoformat(),
                         "activity_description": activity_description
                     })
                     print(f"[Proactive Agent] Activity logged: {activity_description[:50]}...")
                     
-                    if respect_delta != 0:
-                        from db import karen_state_col
-                        state_doc = karen_state_col.find_one({"_id": "respect_score"})
-                        current = state_doc.get("score", 100) if state_doc else 100
-                        new_score = max(0, min(100, current + respect_delta))
-                        karen_state_col.update_one({"_id": "respect_score"}, {"$set": {"score": new_score}}, upsert=True)
-                        print(f"[Proactive Agent] Respect score adjusted by {respect_delta}. New score: {new_score}/100")
-                    
-                    if speak and message:
-                        # Trigger live voice alert
-                        live_alerts_col.insert_one({
-                            "message": message,
-                            "mood": mood,
-                            "created_at": datetime.now().isoformat(),
-                            "processed": False
-                        })
-                        print(f"[Proactive Agent] Spontaneous Initiation triggered: {message} ({mood})")
+                    # Pass the description to Karen's brain to decide if she wants to react
+                    try:
+                        from ai import get_karen_reaction_to_screen
+                        reaction = get_karen_reaction_to_screen(activity_description)
+                        
+                        speak = reaction.get("speak", False)
+                        message = reaction.get("message", "")
+                        mood = reaction.get("mood", "neutral")
+                        respect_delta = reaction.get("respect_delta", 0)
+                        
+                        if respect_delta != 0:
+                            from db import karen_state_col
+                            state_doc = karen_state_col.find_one({"_id": "respect_score"})
+                            current = state_doc.get("score", 100) if state_doc else 100
+                            new_score = max(0, min(100, current + respect_delta))
+                            karen_state_col.update_one({"_id": "respect_score"}, {"$set": {"score": new_score}}, upsert=True)
+                            print(f"[Proactive Agent] Respect score adjusted by {respect_delta}. New score: {new_score}/100")
+                        
+                        if speak and message:
+                            # Trigger live voice alert
+                            live_alerts_col.insert_one({
+                                "message": message,
+                                "mood": mood,
+                                "created_at": datetime.now().isoformat(),
+                                "processed": False
+                            })
+                            print(f"[Proactive Agent] Spontaneous Initiation triggered: {message} ({mood})")
+                            
+                    except Exception as e:
+                        print(f"[Proactive Agent] Error getting Karen's reaction: {e}")
                 else:
                     print(f"[Proactive Agent] Failed to capture or analyze screen: {response_text}")
             except Exception as e:

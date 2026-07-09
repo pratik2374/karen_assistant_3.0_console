@@ -1,0 +1,17 @@
+### Summary of Findings
+To help Pratik get placed at a top tech company, it is essential to utilize curated prep material, interview practice resources, and roadmap suggestions. Several online resources, such as LeetCode, Glassdoor, and Pramp, offer valuable preparation materials and interview practice opportunities. Creating a personalized roadmap, focusing on skill development, and networking can significantly improve the chances of getting placed at a top tech company.
+
+---
+### Detailed Report
+The research has identified several key resources and opportunities to help Pratik achieve his goal:
+*   **Curated Prep Material:** Websites like LeetCode, HackerRank, and CodeWars provide a comprehensive collection of coding challenges and problems to practice. These resources help improve coding skills, problem-solving abilities, and familiarity with various programming languages.
+*   **Interview Practice Resources:** Platforms such as Pramp, InterviewBit, and Glassdoor offer mock interviews, interview questions, and tips to prepare for technical interviews. These resources help build confidence, improve communication skills, and develop strategies for tackling common interview questions.
+*   **Roadmap Suggestions:** Creating a personalized roadmap involves identifying areas of improvement, setting goals, and developing a plan to achieve them. This can include focusing on specific skills, networking with professionals, and staying up-to-date with industry trends.
+*   **Actionable Opportunities:** Attend webinars, join online communities (e.g., LinkedIn groups, Reddit forums), and participate in coding challenges to expand the network and gain visibility.
+*   **Links and Resources:**
+    *   LeetCode: <https://leetcode.com/>
+    *   Glassdoor: <https://www.glassdoor.com/>
+    *   Pramp: <https://www.pramp.com/>
+    *   HackerRank: <https://www.hackerrank.com/>
+    *   CodeWars: <https://www.codewars.com/>
+    *   InterviewBit: <https://www.interviewbit.com/>

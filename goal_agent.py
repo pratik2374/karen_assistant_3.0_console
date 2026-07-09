@@ -50,24 +50,24 @@ def worker_loop(task_id: str, goal: str):
             """Updates the swarm's live status in the database so the user can see what it's doing."""
             return log_swarm_thought(task_id, thought)
             
-        def bound_check_kill():
+        def bound_check_kill(check: str = "status"):
             """Checks if the user killed this task."""
             return check_kill_switch(task_id)
 
         agent = Agent(
             name="Groq Worker Swarm",
             role="Relentless background researcher and data grinder. You work for Karen.",
-            model=Groq(id="llama3-70b-8192", api_key=get_groq_api_key()),
+            model=Groq(id="llama-3.3-70b-versatile", api_key=get_groq_api_key()),
             instructions=[
                 "You are an autonomous background worker.",
                 "Your job is to relentlessly research and execute the given goal.",
                 "CRITICAL: Before taking any major step, you MUST call bound_log_thought to tell the database what you are doing (e.g. 'Scraping LinkedIn for recruiters').",
                 "CRITICAL: Periodically call bound_check_kill. If it returns 'KILL_FLAG_TRUE', you MUST immediately stop all work and output 'KILLED BY USER' as your final response.",
                 "Use search_web to find information.",
-                "Once you have a complete and detailed answer, formulate your final response."
+                "Once you have a complete and detailed answer, formulate your final response.",
+                "CRITICAL FORMAT: You MUST start your final response with a 2-3 line summary of your findings. Then, put a separator '---', followed by your full detailed report.",
             ],
             tools=[bound_log_thought, bound_check_kill, search_web],
-            show_tool_calls=True,
             markdown=True
         )
         
@@ -80,14 +80,50 @@ def worker_loop(task_id: str, goal: str):
             swarm_tasks_col.update_one({"task_id": task_id}, {"$set": {"status": "KILLED", "current_thought": "Terminated by user."}})
             return
             
+        # Parse the output for summary and full report
+        content = response.content
+        summary = "Swarm task completed successfully."
+        if "---" in content:
+            parts = content.split("---", 1)
+            summary = parts[0].strip()
+        
+        # Save to file
+        import subprocess
+        
+        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "research_reports")
+        os.makedirs(reports_dir, exist_ok=True)
+        
+        # Create a safe filename from the goal
+        safe_goal = "".join([c if c.isalnum() else "_" for c in goal[:30]])
+        filepath = os.path.join(reports_dir, f"SwarmReport_{safe_goal}_{task_id[:6]}.txt")
+        
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+            
         swarm_tasks_col.update_one(
             {"task_id": task_id},
             {"$set": {
                 "status": "COMPLETED",
-                "result": response.content,
+                "result": content,
                 "current_thought": "Finished successfully."
             }}
         )
+        
+        # Pop it open in Notepad
+        try:
+            subprocess.Popen(["notepad.exe", filepath])
+        except Exception as e:
+            print(f"[Swarm] Failed to open Notepad: {e}")
+        
+        # Trigger an autonomous live alert to tell the user it's done, reading the summary!
+        from db import live_alerts_col
+        live_alerts_col.insert_one({
+            "message": f"Swarm Task Completed! {summary}\nI've popped the full report open in Notepad for you.",
+            "mood": "proud",
+            "created_at": datetime.now().isoformat(),
+            "processed": False
+        })
+        
     except Exception as e:
         swarm_tasks_col.update_one(
             {"task_id": task_id},
@@ -96,6 +132,13 @@ def worker_loop(task_id: str, goal: str):
                 "current_thought": f"Crashed: {str(e)}"
             }}
         )
+        from db import live_alerts_col
+        live_alerts_col.insert_one({
+            "message": f"Swarm Task crashed on goal: {goal[:30]}... Error: {str(e)}",
+            "mood": "annoyed",
+            "created_at": datetime.now().isoformat(),
+            "processed": False
+        })
     finally:
         if task_id in _active_swarms:
             del _active_swarms[task_id]
@@ -136,9 +179,26 @@ def get_swarm_status(task_id: str = None) -> str:
         return status_str
         
     active = list(swarm_tasks_col.find({"status": {"$in": ["RUNNING", "QUEUED"]}}))
-    if not active:
-        return "No active swarm tasks right now."
-    out = "Active Swarms:\n"
-    for t in active:
-        out += f"- ID: {t['task_id']} | Status: {t['status']} | Doing: {t.get('current_thought')}\n"
+    out = ""
+    if active:
+        out += "Active Swarms:\n"
+        for t in active:
+            out += f"- ID: {t['task_id']} | Status: {t['status']} | Doing: {t.get('current_thought')}\n"
+    else:
+        out += "No active swarm tasks right now.\n"
+        
+    recent = list(swarm_tasks_col.find({"status": {"$in": ["COMPLETED", "FAILED"]}}).sort("created_at", -1).limit(3))
+    if recent:
+        out += "\nRecently Completed/Failed Swarms:\n"
+        for t in recent:
+            out += f"- ID: {t['task_id']} | Goal: {t['goal'][:50]}... | Status: {t['status']}\n"
     return out
+
+def read_swarm_result(task_id: str) -> str:
+    """Reads the full, detailed result of a completed swarm task."""
+    task = swarm_tasks_col.find_one({"task_id": task_id})
+    if not task:
+        return f"Task {task_id} not found."
+    if task['status'] != "COMPLETED":
+        return f"Task {task_id} is currently {task['status']}. No final result yet."
+    return task.get("result", "No result found.")

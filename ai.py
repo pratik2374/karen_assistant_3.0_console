@@ -777,7 +777,7 @@ def get_karen_orchestrator():
         karen_state_col.update_one({"_id": "respect_score"}, {"$set": {"score": new_score}}, upsert=True)
         return f"Respect score adjusted by {points}. New score is {new_score}/100."
     
-    from goal_agent import launch_swarm_task, kill_swarm_task, get_swarm_status
+    from goal_agent import launch_swarm_task, kill_swarm_task, get_swarm_status, read_swarm_result
     
     return Agent(
         name="Karen Orchestrator",
@@ -791,7 +791,7 @@ def get_karen_orchestrator():
             search_past_conversations, run_shell_command, see_screen,
             manage_email_priorities, search_emails, send_email, read_codex,
             read_activity_logs, adjust_respect_score, read_latest_emails,
-            launch_swarm_task, kill_swarm_task, get_swarm_status,
+            launch_swarm_task, kill_swarm_task, get_swarm_status, read_swarm_result,
             block_website, change_wallpaper, smart_shutdown
         ],
         instructions=instructions
@@ -856,6 +856,49 @@ If it contains any new facts, preferences, or habits about the user, call write_
         memory_agent.run(prompt)
     except Exception as e:
         print(f"[Memory Extraction] Failed: {e}")
+
+def get_karen_reaction_to_screen(activity_description: str) -> dict:
+    """
+    Called by the proactive background agent. Passes the objective screen description
+    to Karen's orchestration model so she can decide whether to interrupt the user.
+    """
+    karen = get_karen_orchestrator()
+    
+    prompt = f"""The background vision agent just took a screenshot of the user's computer and described it as follows:
+'{activity_description}'
+
+Using your strict Chief of Staff persona, decide if you want to verbally interrupt them. 
+- If they are wasting time (e.g. YouTube, Reddit, gaming) when they should be working, you MUST scold them and deduct respect (delta -10).
+- If they are working extremely hard (e.g. coding, applying for jobs), you may optionally praise them (delta +5).
+- If they are doing normal things or you don't want to bother them, do not speak.
+
+Return a JSON block EXACTLY like this if you want to speak:
+{{
+  "speak": true,
+  "message": "Oh, YouTube again? Close the tab.",
+  "mood": "annoyed",
+  "respect_delta": -10
+}}
+If you do not want to interrupt them, return an empty JSON object: {{}}
+"""
+    try:
+        response = karen.run(prompt)
+        content = response.content
+        import re
+        import json
+        
+        # Extract JSON from potential markdown wrapping
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group(1))
+            return data
+        else:
+            # Fallback direct parse
+            data = json.loads(content)
+            return data
+    except Exception as e:
+        print(f"[Karen Reaction Error] {e}")
+        return {}
 
 if __name__ == "__main__":
     print("Testing Karen Orchestrator...")

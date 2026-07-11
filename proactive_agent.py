@@ -16,7 +16,7 @@ def run_proactive_checks():
     """Main loop for proactive checks. Should be run in a background thread."""
     email_interval = int(os.getenv("EMAIL_CHECK_INTERVAL_MINUTES", "30"))
     email_interval_seconds = email_interval * 60
-    snapshot_interval_seconds = int(os.getenv("SNAPSHOT_INTERVAL_SECONDS", "3600"))
+    snapshot_interval_seconds = int(os.getenv("SNAPSHOT_INTERVAL_SECONDS", "600"))
     
     last_email_check = 0
     last_snapshot_check = 0
@@ -129,10 +129,12 @@ def run_proactive_checks():
                 
             last_snapshot_check = time.time()
             
-        # Check Relational Gifts/Consoling (Randomized 1 to 5 hours)
+        # Check Relational Gifts/Consoling (Randomized limits from .env)
         if not hasattr(run_proactive_checks, 'next_relational_interval'):
             import random
-            run_proactive_checks.next_relational_interval = random.uniform(1.0, 5.0) * 3600
+            min_hrs = float(os.getenv("RELATIONAL_CHECK_MIN_HOURS", "1.0"))
+            max_hrs = float(os.getenv("RELATIONAL_CHECK_MAX_HOURS", "5.0"))
+            run_proactive_checks.next_relational_interval = random.uniform(min_hrs, max_hrs) * 3600
 
         if now - getattr(run_proactive_checks, 'last_relational_check', 0) >= getattr(run_proactive_checks, 'next_relational_interval'):
             import random
@@ -147,9 +149,9 @@ def run_proactive_checks():
                     "Use read_activity_logs to review the user's recent activity logs. "
                     "If they have been working extremely hard, autonomously use send_email to send them a sweet, encouraging 'gift' email, or use your calendar tools to schedule a 'Mandatory Break'. "
                     "If they seem stressed, send a consoling message. "
-                    "ALSO, use read_codex to check their long-term ambitions (e.g. 'placement'). "
-                    "If they have a massive goal they are struggling with, YOU MUST autonomously use launch_swarm_task to spin up the Groq Swarm to start researching or finding resources for them right now in the background! "
-                    "Then, send a live alert (or just output text) saying: 'Sir, I noticed you are grinding for X, so I spontaneously spun up the Swarm to start researching Y for you.' "
+                    "ALSO, use read_codex to check their long-term ambitions and varied interests (e.g., poetry, dark matter, superhuman intelligence, human-like AI, or placement). "
+                    "If they have a massive goal or deep interest they are struggling with, YOU MUST autonomously use launch_swarm_task to spin up the Groq Swarm to start researching or finding resources for them right now in the background! "
+                    "Then, send a live alert (or just output text) saying: 'Sir, I noticed you love X, so I spontaneously spun up the Swarm to start researching Y for you.' "
                     "If they are just normal or wasting time, do nothing. "
                     "Do not ask for permission, just do it if warranted."
                 )

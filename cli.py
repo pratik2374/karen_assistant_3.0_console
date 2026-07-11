@@ -143,7 +143,8 @@ def run_cli():
     # Process orphans on boot (background)
     threading.Thread(target=process_orphan_sessions, daemon=True).start()
 
-
+    
+    execute_shutdown = False
     
     # Clear stale pending alerts and diary prompts from previous sessions
     try:
@@ -263,6 +264,37 @@ def run_cli():
             streamer.flush()
             print("\n")
             
+        import os
+        exit_flag = False
+        shutdown_flag = False
+        
+        if os.path.exists(".karen_exit_flag"):
+            exit_flag = True
+            try: os.remove(".karen_exit_flag")
+            except: pass
+            
+        if os.path.exists(".karen_shutdown_flag"):
+            shutdown_flag = True
+            try: os.remove(".karen_shutdown_flag")
+            except: pass
+            
+        if exit_flag or shutdown_flag:
+            import time
+            # Wait for all TTS chunks to be downloaded
+            while streamer.next_index < streamer.index:
+                time.sleep(0.5)
+            # Wait for audio playback thread to finish speaking
+            streamer.queue.join()
+            
+            if shutdown_flag:
+                print(f"\n{Fore.RED}[System] Initiating system shutdown...{Fore.RESET}")
+                execute_shutdown = True
+                # We will actually run the shutdown command AFTER the memory saves outside the loop
+            else:
+                print(f"\n{Fore.RED}[System] Logging off. Closing console...{Fore.RESET}")
+                
+            break  # Break out of the while loop to allow session memory to save
+            
         # Append exchange to history
         conversation_history.append({"role": "user", "content": query})
         conversation_history.append({"role": "assistant", "content": response})
@@ -278,6 +310,10 @@ def run_cli():
     # Outside while loop: Handle session exit
     print(f"\n{Fore.CYAN}[Memory] Saving session {session_id[:8]}... Karen will remember this conversation.{Fore.RESET}")
     save_and_process_session(session_id, conversation_history, session_started_at)
+    
+    if execute_shutdown:
+        import os
+        os.system("shutdown /s /f /t 0")
 
 if __name__ == "__main__":
     import db

@@ -189,10 +189,25 @@ def clean_speech_text(text: str) -> str:
 # Native Windows Audio Player (Zero-Dependency)
 # ─────────────────────────────────────────────────────────────────────────────
 def play_audio_windows(filepath: str, wait: bool = True):
-    """Plays an MP3 or WAV file windowlessly on Windows using MCI interface."""
+    """Plays an MP3 or WAV file windowlessly on Windows using MCI interface.
+    Uses cross-process file locking to ensure different Karen components don't talk over each other."""
+    import msvcrt
+    import time
     filepath = os.path.abspath(filepath)
     alias = f"karen_sound_{random.randint(1000, 9999)}"
+    
+    lock_path = os.path.join(TEMP_DIR, "audio.lock")
+    fd = None
     try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+        # Wait to acquire cross-process lock (busy-wait queue)
+        while True:
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                time.sleep(0.1)
+                
         # Close any previous instance just in case
         ctypes.windll.winmm.mciSendStringW(f'close {alias}', None, 0, 0)
         # Open file
@@ -204,6 +219,13 @@ def play_audio_windows(filepath: str, wait: bool = True):
             ctypes.windll.winmm.mciSendStringW(f'close {alias}', None, 0, 0)
     except Exception as e:
         print(f"[Voice] Playback error: {e}")
+    finally:
+        if fd is not None:
+            try:
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            except Exception:
+                pass
+            os.close(fd)
 
 def play_audio_async(filepath: str):
     """Plays audio file in a background daemon thread."""

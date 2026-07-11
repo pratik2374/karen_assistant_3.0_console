@@ -196,6 +196,19 @@ def change_wallpaper(text: str) -> str:
     except Exception as e:
         return f"Failed to change wallpaper: {e}"
 
+def log_off_karen() -> str:
+    """
+    Terminates Karen's background daemon and proactive agent gracefully.
+    Returns a special flag so the main CLI knows to exit safely.
+    """
+    import os
+    print("[System Commander] Terminating background agents...")
+    os.system('wmic process where "CommandLine like \'%python%daemon.py%\'" call terminate >nul 2>&1')
+    os.system('wmic process where "CommandLine like \'%python%proactive_agent.py%\'" call terminate >nul 2>&1')
+    with open(".karen_exit_flag", "w") as f:
+        f.write("1")
+    return "Background agents terminated. Say your goodbye."
+
 def smart_shutdown(force: bool = False) -> str:
     """
     Safely shuts down the PC. 
@@ -208,8 +221,11 @@ def smart_shutdown(force: bool = False) -> str:
     
     if force:
         print("[System Commander] Initiating forced shutdown...")
-        os.system("shutdown /s /f /t 5")
-        return "Executing forced shutdown in 5 seconds. Goodbye."
+        os.system('wmic process where "CommandLine like \'%python%daemon.py%\'" call terminate >nul 2>&1')
+        os.system('wmic process where "CommandLine like \'%python%proactive_agent.py%\'" call terminate >nul 2>&1')
+        with open(".karen_shutdown_flag", "w") as f:
+            f.write("1")
+        return "Shutdown sequence initiated."
         
     # Check for unsaved files via Window Titles
     EnumWindows = ctypes.windll.user32.EnumWindows
@@ -244,5 +260,8 @@ def smart_shutdown(force: bool = False) -> str:
     
     # If no unsaved files found, safe to shutdown (still use /f just in case some hidden process hangs)
     print("[System Commander] No unsaved files detected. Initiating clean shutdown...")
-    os.system("shutdown /s /f /t 5")
-    return "No unsaved files found. Executing clean shutdown in 5 seconds. Goodbye."
+    os.system('wmic process where "CommandLine like \'%python%daemon.py%\'" call terminate >nul 2>&1')
+    os.system('wmic process where "CommandLine like \'%python%proactive_agent.py%\'" call terminate >nul 2>&1')
+    with open(".karen_shutdown_flag", "w") as f:
+        f.write("1")
+    return "Shutdown sequence initiated."

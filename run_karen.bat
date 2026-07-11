@@ -20,4 +20,3 @@ python cli.py
 
 echo.
 echo [System] Karen session ended.
-pause

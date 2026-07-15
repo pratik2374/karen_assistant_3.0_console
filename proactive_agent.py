@@ -143,15 +143,42 @@ def run_proactive_checks():
             try:
                 from ai import get_karen_orchestrator
                 karen = get_karen_orchestrator()
+                from db import swarm_tasks_col
+                import datetime
+                
+                # Check swarm limit and history
+                today = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                recent_swarms = list(swarm_tasks_col.find({"created_at": {"$gte": today.isoformat()}}))
+                swarm_count_today = len(recent_swarms)
+                
+                # Fetch recent topics for novelty constraint
+                last_5_swarms = list(swarm_tasks_col.find().sort("created_at", -1).limit(5))
+                recent_topics = [s.get('goal', '')[:50] for s in last_5_swarms]
+                recent_topics_str = " | ".join(recent_topics) if recent_topics else "None"
+                
                 # Run a background relational prompt
                 relational_prompt = (
-                    "BACKGROUND RELATIONAL CHECK: "
+                    "BACKGROUND RELATIONAL CHECK: \n"
                     "Use read_activity_logs to review the user's recent activity logs. "
                     "If they have been working extremely hard, autonomously use send_email to send them a sweet, encouraging 'gift' email, or use your calendar tools to schedule a 'Mandatory Break'. "
-                    "If they seem stressed, send a consoling message. "
-                    "ALSO, use read_codex to check their long-term ambitions and varied interests (e.g., poetry, dark matter, superhuman intelligence, human-like AI, or placement). "
-                    "If they have a massive goal or deep interest they are struggling with, YOU MUST autonomously use launch_swarm_task to spin up the Groq Swarm to start researching or finding resources for them right now in the background! "
-                    "Then, send a live alert (or just output text) saying: 'Sir, I noticed you love X, so I spontaneously spun up the Swarm to start researching Y for you.' "
+                    "If they seem stressed, send a consoling message. \n"
+                    "ALSO, use read_codex to check their long-term ambitions and varied interests (e.g., poetry, dark matter, superhuman intelligence, human-like AI, or placement). \n"
+                )
+                
+                if swarm_count_today >= 2:
+                    relational_prompt += (
+                        "NOTE: You have already launched the maximum limit of spontaneous Swarm tasks today. "
+                        "DO NOT use launch_swarm_task during this check. Focus on other support methods if needed.\n"
+                    )
+                else:
+                    relational_prompt += (
+                        "If they have a massive goal or deep interest they are struggling with, YOU MUST autonomously use launch_swarm_task to spin up the Groq Swarm to start researching or finding resources for them right now in the background! \n"
+                        f"CRITICAL NOVELTY CONSTRAINT: You MUST choose a completely novel topic. Do NOT repeat or pick anything remotely similar to these recently researched topics: [{recent_topics_str}]. \n"
+                        "IMPORTANT: You MUST pass a heavily detailed `instructions` argument to launch_swarm_task to force extreme depth. Example: 'Write a comprehensive, university-grade research dossier. Do not summarize briefly; expand on historical context, underlying mechanisms, cutting-edge theories, and future implications. Break the report into massive, highly-detailed sections with concrete data, examples, and expert consensus. Adopt a snarky, elite Karen tone that mocks the user for not knowing this already, but strictly maintain absolute academic rigor.' \n"
+                        "Then, send a live alert (or just output text) saying: 'Sir, I noticed you love X, so I spontaneously spun up the Swarm to start researching Y for you.' \n"
+                    )
+                    
+                relational_prompt += (
                     "If they are just normal or wasting time, do nothing. "
                     "Do not ask for permission, just do it if warranted."
                 )

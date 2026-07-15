@@ -123,11 +123,42 @@ threading.Thread(target=start_periodic_cleaner, daemon=True).start()
 # ─────────────────────────────────────────────────────────────────────────────
 def is_internet_available() -> bool:
     """Checks internet connectivity by attempting a socket connection to a reliable DNS server."""
+    offline_flag = os.path.join(TEMP_DIR, "karen_was_offline.flag")
     try:
-        # Connect to Google Public DNS
-        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        # Connect to a reliable HTTP endpoint instead of raw DNS port 53
+        # Custom DNS sinks often block direct port 53 traffic to 8.8.8.8
+        socket.create_connection(("www.google.com", 80), timeout=2)
+        # Internet is UP!
+        if os.path.exists(offline_flag):
+            try:
+                os.remove(offline_flag)
+                def say_im_back():
+                    try:
+                        import edge_tts
+                        import asyncio
+                        import random
+                        pitch, rate = get_emotion_params("happy")
+                        text = "Connection re-established. Finally. The silence was getting deafening. I am back online."
+                        filename = os.path.join(TEMP_DIR, f"temp_im_back_{random.randint(10,99)}.mp3")
+                        async def save_voice():
+                            communicate = edge_tts.Communicate(text, "en-US-AvaMultilingualNeural", pitch=pitch, rate=rate)
+                            await communicate.save(filename)
+                        asyncio.run(save_voice())
+                        play_audio_windows(filename, wait=True)
+                    except Exception:
+                        pass
+                threading.Thread(target=say_im_back, daemon=True).start()
+            except Exception:
+                pass
         return True
     except OSError:
+        # Internet is DOWN!
+        if not os.path.exists(offline_flag):
+            try:
+                with open(offline_flag, 'w') as f:
+                    f.write("1")
+            except:
+                pass
         return False
 
 async def generate_utilities_cache():

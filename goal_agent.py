@@ -314,19 +314,19 @@ def _build_context(pages, cap=SUBTASK_CONTEXT_CAP):
 def _model(model_id, max_tokens=None):
     kwargs = {"id": model_id, "api_key": get_openai_api_key()}
     if max_tokens:
-        # OpenAI reasoning models (like gpt-5.4) require max_completion_tokens instead of max_tokens
-        kwargs["max_completion_tokens"] = max_tokens
+        if "gpt-5.4" in model_id or "o1" in model_id:
+            # Reasoning models crash if max_tokens is passed, and max_completion_tokens can fail depending on the Agno version.
+            # Best fix: Omit token limits entirely for these models and let them use their default max window.
+            pass
+        else:
+            kwargs["max_tokens"] = max_tokens
+    
     try:
         return OpenAIChat(**kwargs)
     except TypeError:
-        # Fallback if agno version strictly expects max_tokens
-        kwargs.pop("max_completion_tokens", None)
-        kwargs["max_tokens"] = max_tokens
-        try:
-            return OpenAIChat(**kwargs)
-        except TypeError:
-            kwargs.pop("max_tokens", None)
-            return OpenAIChat(**kwargs)
+        # Fallback if there's any other signature mismatch
+        kwargs.pop("max_tokens", None)
+        return OpenAIChat(**kwargs)
 
 
 def _ask(model_id, name, role, instructions, message, user_instructions=None, max_tokens=None):

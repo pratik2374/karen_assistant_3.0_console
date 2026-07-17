@@ -148,13 +148,15 @@ def run_proactive_checks():
                 
                 # Check swarm limit and history
                 today = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                seven_days_ago = today - datetime.timedelta(days=7)
+                
                 recent_swarms = list(swarm_tasks_col.find({"created_at": {"$gte": today.isoformat()}}))
                 swarm_count_today = len(recent_swarms)
                 
-                # Fetch recent topics for novelty constraint
-                last_5_swarms = list(swarm_tasks_col.find().sort("created_at", -1).limit(5))
-                recent_topics = [s.get('goal', '')[:50] for s in last_5_swarms]
-                recent_topics_str = " | ".join(recent_topics) if recent_topics else "None"
+                # Fetch recent topics for a robust novelty constraint (7-day lookback)
+                last_7_days_swarms = list(swarm_tasks_col.find({"created_at": {"$gte": seven_days_ago.isoformat()}}).sort("created_at", -1))
+                recent_topics = [f"- {s.get('goal', '')}" for s in last_7_days_swarms]
+                recent_topics_str = "\n".join(recent_topics) if recent_topics else "No recent research in the last 7 days."
                 
                 # Run a background relational prompt
                 relational_prompt = (
@@ -173,7 +175,9 @@ def run_proactive_checks():
                 else:
                     relational_prompt += (
                         "If they have a massive goal or deep interest they are struggling with, YOU MUST autonomously use launch_swarm_task to spin up the Groq Swarm to start researching or finding resources for them right now in the background! \n"
-                        f"CRITICAL NOVELTY CONSTRAINT: You MUST choose a completely novel topic. Do NOT repeat or pick anything remotely similar to these recently researched topics: [{recent_topics_str}]. \n"
+                        f"CRITICAL NOVELTY CONSTRAINT - 7-DAY MEMORY:\nHere is exactly what you have researched for the user in the past 7 days:\n{recent_topics_str}\n\n"
+                        "You MUST choose a completely novel domain for your spontaneous research. Do NOT repeat the same type of job searches, scholarship searches, or technical deep-dives if you have already done them recently. "
+                        "Pivot to vastly different domains like history, astrophysics, philosophy, extreme niche tech, art, or highly specific career hacks. Expand their horizons! \n"
                         "IMPORTANT: You MUST pass a heavily detailed `instructions` argument to launch_swarm_task to force extreme depth. Example: 'Write a comprehensive, university-grade research dossier. Do not summarize briefly; expand on historical context, underlying mechanisms, cutting-edge theories, and future implications. Break the report into massive, highly-detailed sections with concrete data, examples, and expert consensus. Adopt a snarky, elite Karen tone that mocks the user for not knowing this already, but strictly maintain absolute academic rigor.' \n"
                         "Then, send a live alert (or just output text) saying: 'Sir, I noticed you love X, so I spontaneously spun up the Swarm to start researching Y for you.' \n"
                     )
